@@ -10,7 +10,20 @@ Reports arrive pre-framed by whoever filed them. Some are real, most are oversta
 
 Two failure modes to avoid, in both directions. Accepting the reporter's severity because a security label makes people cautious. And dismissing the whole thing because the framing is inflated, which loses the real bug hiding inside it. Verify first, then judge.
 
-## 1. Read the advisory from the API
+## Verdicts
+
+Every advisory ends in exactly one of these. Steps 1–8 decide which; steps 9–12 carry it out. Name the verdict explicitly in the report back.
+
+| Verdict | When | Advisory | CVE | Fix | Reply |
+|---|---|---|---|---|---|
+| **Vulnerability** | Untrusted party reaches the defect through a public entry point and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
+| **Already fixed** | Vulnerability that a released version no longer has | Keep, set `patched_versions` to that release, publish or close (deliberate choice, step 11) | Same as above | None to write | Point to the release |
+| **Hardening bug** | Real defect, but no untrusted party can reach it, or it is outside the tool's threat model | `state: closed` | No | Yes, as ordinary correctness in a normal release | Explain the trust model; thank them for the bug |
+| **Not a defect** | Code behaves as intended or documented | `state: closed` | No | No | Explain what actually happens and why |
+
+The severity enum has no "not a vulnerability" value, so the last two close rather than carry a `low`.
+
+## 1. Read the advisory, and what came before it
 
 ```bash
 gh api /repos/{owner}/{repo}/security-advisories/{ghsa-id}
@@ -18,7 +31,9 @@ gh api /repos/{owner}/{repo}/security-advisories/{ghsa-id}
 
 Note `severity`, `cvss.vector_string`, `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
 
-If the user dropped several advisories at once, list them all (`gh api /repos/{owner}/{repo}/security-advisories`) and read every one before triaging any. Step 6 depends on it.
+Then list every advisory on the repo (`gh api /repos/{owner}/{repo}/security-advisories`), closed and published included. If you or a co-maintainer already ruled on the same bug class, reuse that verdict and its reasoning, or say explicitly why this one differs. Inconsistent rulings across advisories are the first thing a persistent reporter will quote back.
+
+If the user dropped several advisories at once, read every one before triaging any. Step 7 depends on it.
 
 ## 2. Reproduce it yourself
 
@@ -26,17 +41,19 @@ Never accept the PoC as evidence. Reproduce the mechanism directly: extract the 
 
 This cuts both ways — it is equally how you confirm a real bug and how you catch one that no longer exists. Check the version too: a report against `<= 1.2.3` may describe something already fixed.
 
+Read the report itself critically. Signs of a scanner-driven or LLM-written report: a CVSS vector that does not fit its own write-up, a PoC that calls unexported internals or builds inputs the public API never produces, no run against a released version, boilerplate impact paragraphs that could sit under any bug. Treat these as cues to verify harder, never as grounds to dismiss — templated reports still find real bugs, and "this reads like AI" is not an argument you can put in a reply.
+
 ## 3. Read the whole function, not the reported payload
 
 Reporters find one payload. You have the source. Read the entire function and every one of its call sites.
 
-This reliably finds more than the report. In one case a three-line escaping helper had two further holes the reporter never reached — one branch left an interpolation sequence unescaped, and another produced a syntax error for *any* input containing a particular character — plus a nearby call site that skipped the helper entirely, which was strictly worse than the reported issue. All three shipped in the same fix.
+The payload exercises one path; the function almost always has others the reporter never reached, and a sibling call site may bypass the function entirely — often strictly worse than what was reported. Fix all of them together.
 
 Finding what they missed is also the strongest possible position from which to dispute their severity. It demonstrates you read the code rather than the write-up.
 
 ## 4. Check whether the test suite already encodes the bug
 
-Grep the committed tests and snapshots for the broken output. Twice in one session a snapshot had been asserting uncompilable generated code for years.
+Grep the committed tests and snapshots for the broken output. A snapshot that has been asserting broken output for years is not unusual.
 
 When you find this, it tells you two things: the bug is real, and it is mundane rather than exotic. A defect the test suite has been happily asserting is a correctness problem that happens to have a security framing — which is usually the honest way to describe it and to fix it.
 
@@ -44,53 +61,91 @@ When you find this, it tells you two things: the bug is real, and it is mundane 
 
 This is normally the crux, and it is where instinct is least reliable. Do not reason about the required privilege — test it.
 
-A worked example of why. The maintainer's first instinct was "anyone who can do that already has enough access to cause worse damage directly, so there is no vector here." Reasonable, and false. Provisioning an account with *only* the single permission the attack needs — and nothing else — showed it could plant the payload while being denied the broader access the argument assumed it implied. That dismissal would have been refuted in about thirty seconds by a reporter who tried it.
+The tempting dismissal is "anyone who can do that already has enough access to cause worse damage directly, so there is no vector here." It is often false. Provision an account with *only* the single permission the attack needs, and nothing else: it can frequently plant the payload while being denied the broader access the argument assumed it implied. A reporter with a terminal refutes that dismissal in thirty seconds.
 
-The same test also showed that no ordinary, correctly-provisioned account could reach the code at all, which is what actually sank the reported severity. Empirical beats intuitive in both directions, which is the point: run the test before you rely on the claim in public.
+The same test can just as easily show that no ordinary, correctly provisioned account reaches the code at all — which is a far stronger argument against the reported severity. Empirical beats intuitive in both directions: run the test before you rely on the claim in public.
 
 ## 6. Trace every input path before accepting "attacker-controlled"
 
 Enumerate exhaustively where the tainted value can come from: config keys, environment-variable mappings and their whitelists, public API callers, HTTP/admin surfaces, CI variables. Name the file and line for each route you rule out.
 
-This is what turns a "High — arbitrary code execution" into not a vulnerability. In one case the only supplier of the input was the developer typing it on their own command line — someone who could already execute arbitrary code without going through the reported path. No privilege boundary was crossed, so there was nothing to escalate.
+This is what turns a "High — arbitrary code execution" into not a vulnerability. When the only supplier of the input is the developer running a command on their own machine, they could already execute arbitrary code without going through the reported path. No privilege boundary is crossed, so there is nothing to escalate.
 
-Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project. Say so explicitly rather than ignoring it; it is the reporter's most likely comeback.
+Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project — unless step 8's pass-through test shows the documented usage forwards untrusted data there. Say which it is explicitly; it is the reporter's most likely comeback.
 
-## 7. Look for chains across multiple reports
+## 7. Bulk drops: group by root cause, then look for chains
 
-When several advisories land together, check whether any two compose. Reporters filing in bulk usually miss this because they write each one in isolation.
+**Group first.** Reporters filing in bulk often submit the same mechanism several times — one unguarded pattern hit at different call sites, one missing check reached through different options. Cluster the advisories by mechanism before rating any of them. Each cluster is one investigation and one fix: grep for the pattern beyond the reported sites, since the reporter rarely found them all. Give every advisory in a cluster the same verdict and severity, and cross-reference the siblings in each reply ("same root cause as <advisory>, fixed together").
 
-In one bulk drop, a path-traversal report controlled the *destination path* of a generated file and an escaping report controlled its *contents* — both reachable from a single attacker-supplied value, together writing attacker-chosen executable code over a file the application already loaded, with no user interaction. That combination was worse than either report alone.
+**Then look for chains.** Check whether any two clusters compose. Reporters filing in bulk usually miss this because they write each one in isolation. The typical shape: one report controls *where* something is written, loaded, or executed, and another controls *what* — together they put attacker-chosen content somewhere the application trusts, which is worse than either alone.
 
 If you find a chain, decide what it means for your ratings before you publish them. A chain that is materially worse than either component invites the obvious question of why both are rated low — have the answer ready (usually the trust-model argument in step 8, which the chain does not weaken).
 
-## 8. Re-derive severity, and ask the trust-model question
+## 8. Re-derive severity
 
-Go axis by axis against their vector. Recurring inflation patterns:
+### The gate
 
-- `PR:L` where the attack actually requires DDL rights or object ownership
+Answer these in order. The first "no" ends the vulnerability question: the verdict is **hardening bug** (or **not a defect** if step 2 showed nothing broken).
+
+1. **Public entry point** — can the value reach the defect through the documented, exported surface, called the way a pass-through application calls it, at runtime?
+2. **Untrusted party** — in a normal deployment, can anyone other than the application's own developers set that value?
+3. **Real effect** — is the outcome consequential (shared state corrupted, a real authorization or filter bypass, code execution), rather than inert (a throwaway object, a catchable error on malformed input)?
+4. **Threat model** — is the scenario inside what the tool ever claimed to defend?
+
+All four "yes" → **vulnerability**; rate it honestly with the worksheet below.
+
+### The worksheet
+
+Fill this in for every advisory you rate. It feeds the field table in step 11 and the reply in step 12, so write it once and reuse it.
+
+| Axis | Reporter | Ours | Evidence |
+|---|---|---|---|
+| AV | | | |
+| AC | | | |
+| PR | | | step 5 result |
+| UI | | | |
+| S | | | |
+| C | | | |
+| I | | | |
+| A | | | |
+
+Recurring inflation patterns:
+
+- `PR:L` where the attack actually requires a role, grant, or ownership the attacker would not normally hold
 - `AC:L` where it requires a developer to point a dev-time CLI at hostile input
 - `UI:N` where a human has to run something for the payload to fire
 - `S:C` where no privilege domain is actually crossed
 - `C:H` beside `I:N/A:N` when the same defect also destroys or corrupts data. Impact zeroed on the axes that are genuinely worse is a strong sign the vector was fitted to the write-up rather than measured — say so.
 - severity anchored to a narrative ("the third library in a row with this bug class") rather than to the artifact
 
-**The gate question, ask it first: can untrusted data reach the defect through a public entry point at runtime** — the documented, exported functions, called the way a pass-through application calls them? A library's contract is its public surface, so a sink reachable *only* by the library's own internal construction, or by calling an unexported helper directly, is not a public vector. But **the type system is not the boundary, so "it wouldn't type-check" is not a dismissal.** Untrusted input routinely enters a typed API as `any`: `JSON.parse(body)` returns `any`, and `any` assigns to any declared parameter type with no cast anyone has to write. An application that forwards a parsed-JSON `where` / options / data object into a public call hands the attacker every runtime-reachable field, including ones the declared type would reject as a literal. So reproduce the *pass-through* path (step 2): assign the parsed-JSON object to the public parameter type and call the public function, exactly as such an app would. If the payload reaches the sink that way, it is reachable, whatever the types say. Forwarding `JSON.parse(body)` straight into a public call as its query, options, or data argument is the realistic shape, not a hand-written cast past the types.
+### Gate 1: public entry point
 
-**Reachability includes *who* can reach it, not only whether the value can flow to the sink.** A vulnerability requires the tainted value to be controllable by a party the application does not already trust with code execution — its end users, or an external actor across a network, tenant, or account boundary. Inputs that only the application's own developers write are not a vulnerability boundary, however dangerous the sink they reach: the party who sets that value already controls the surrounding code, so there is no privilege to escalate. Definition and configuration surfaces are the usual trap — schema and model definitions, route and handler tables, build and framework config, plugin registration, any structure the developer authors for the framework to compile or wire up. A payload arriving through one of those is a developer injecting code into their own program, which is not an exposure. Ask it concretely: in a normal deployment, can anyone other than the developer set this value? When the honest answer is no, it is a hardening bug at most — fix it as ordinary correctness (step 10) and close the report.
+A library's contract is its public surface, so a sink reachable *only* by the library's own internal construction, or by calling an unexported helper directly, is not a public vector. But **the type system is not the boundary, so "it wouldn't type-check" is not a dismissal.** Untrusted input routinely enters a typed API as `any`: `JSON.parse(body)` returns `any`, and `any` assigns to any declared parameter type with no cast anyone has to write. An application that forwards a parsed request body into a public options or data argument hands the attacker every runtime-reachable field, including ones the declared type would reject as a literal.
 
-Have the answer to the reporter's likely escape hatch ready: *"a dynamic or multi-tenant app might build this structure from user input."* A fast falsifier is to check whether that same value, in that same hypothetical app, also flows into a second sink the framework already treats as trusted — an identifier, a file path, a generated column, a compiled name. If it does, any app exposing the value to users is already broken through that more direct path, which confirms the value was never a user-facing input in the first place: the premise defeats itself rather than establishing a vector. Say that explicitly.
+So reproduce the *pass-through* path (step 2): assign the parsed-JSON object to the public parameter type and call the public function, exactly as such an app would. If the payload reaches the sink that way, it is reachable, whatever the types say.
 
-Once reachability holds — and holds for an untrusted party — the verdict turns on **effect**, not on how exotic the shape looks:
+### Gate 2: who can set the value
 
-- *Reachable and inert* — a throwaway copy whose `[[Prototype]]` is reassigned and then discarded, or a catchable error on malformed input. Dismiss on impact. Say it is reachable and say why it is harmless; do not reach for "internal method" or "needs a cast", which are weaker lines a reporter will knock down.
-- *Reachable and consequential* — a write to shared global state (`Object.prototype` itself, a module singleton), a real authorization or filter bypass that is not already granted by the documented API. This is a vulnerability. Rate it honestly; do not talk yourself out of it because the trigger looked like a typing mistake.
+Inputs that only the application's own developers write are not a vulnerability boundary, however dangerous the sink they reach: whoever sets that value already controls the surrounding code, so there is no privilege to escalate. Definition and configuration surfaces are the usual trap — data-model and schema definitions, route and handler tables, build and framework config, plugin registration, any structure the developer authors for the framework to compile or wire up. A payload arriving through one of those is a developer injecting code into their own program.
 
-The tell that separates the two in the prototype-pollution family: reassigning *a throwaway object's* prototype (`copy.__proto__ = x`) is inert; writing *through* the prototype onto the shared object (`obj.__proto__.foo = x`, i.e. `Object.prototype.foo = x`) corrupts every object in the process and is real. Check which one the code actually does — run it and probe a fresh `{}` afterwards.
+Have the answer to the reporter's likely escape hatch ready: *"a dynamic or multi-tenant app might build this structure from user input."* A fast falsifier is to check whether that same value, in that same hypothetical app, also flows into a second sink the framework already treats as trusted — an identifier, a file path, a compiled name. If it does, any app exposing the value to users is already broken through that more direct path, which confirms the value was never a user-facing input in the first place: the premise defeats itself rather than establishing a vector. Say that explicitly.
+
+### Gate 3: effect
+
+Once reachability holds for an untrusted party, the verdict turns on **effect**, not on how exotic the shape looks. Reachable and inert: dismiss on impact, and say it is reachable and why it is harmless — do not reach for "internal method" or "needs a cast", which are weaker lines a reporter will knock down. Reachable and consequential: this is a vulnerability; do not talk yourself out of it because the trigger looked like a typing mistake.
 
 Only dismiss on reachability when the value genuinely cannot arrive through any public parameter an application populates from untrusted data. When it can, and the effect is real, hardening the code and rating the severity are the same conclusion, not opposites.
 
-Then the question that decides most of these: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool input an untrusted party controls is outside its threat model however severe the payload gets. `npm install` against a hostile lockfile is the familiar version of this.
+**Bug-class specifics** — how to tell inert from consequential, and what the narrowest fix looks like — live in `references/`. Read the matching file only when the report falls in that class:
+
+- `references/prototype-pollution.md` — `__proto__` / `constructor` keys, unsafe merges and copies
+- `references/code-generation.md` — escaping and injection into generated source
+- `references/denial-of-service.md` — unbounded recursion, ReDoS, resource exhaustion
+- `references/path-traversal.md` — attacker-influenced file paths
+
+### Gate 4: threat model
+
+This question decides most of these: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool input an untrusted party controls is outside its threat model however severe the payload gets. `npm install` against a hostile lockfile is the familiar version of this.
 
 Prefer this argument. Privilege-based arguments can be falsified by a reporter with a terminal, as in step 5. The trust-model argument cannot, because it is about what the tool is for.
 
@@ -102,7 +157,7 @@ Default to no for low-severity or dev-time-only issues, and explain why to the u
 
 ## 10. Fix it on its own merits
 
-Frame the fix as ordinary correctness, because that is usually what it is. Keep every trace of the security context out of branch names, commit messages, test names, code comments, and the PR description — no GHSA id, no CVE, no "vulnerability", "RCE" or "injection", no reference to the reporter. Describe the actual defect instead: "unsanitised name produces an uncompilable class identifier".
+Frame the fix as ordinary correctness, because that is usually what it is. Keep every trace of the security context out of branch names, commit messages, test names, code comments, and the PR description — no GHSA id, no CVE, no "vulnerability", "RCE" or "injection", no reference to the reporter. Describe the actual defect instead: "unescaped value breaks the generated output".
 
 Check the branch you are *already on* before committing. A session opened for advisory work often starts on a branch whose name gives the whole thing away, and pushing it defeats every other precaution here.
 
@@ -114,14 +169,14 @@ If a project skill for fixing bugs exists (`/fix`, or `/polish` for finishing a 
 
 ## 11. Update every advisory field
 
-**Put the proposed changes in front of the user before you PATCH anything.** A short before/after table of every field you intend to touch, plus the severity reasoning axis by axis. This is their advisory and the reporter sees the result, so they need to review the content, not authorise a black box. Never ask "shall I update the advisory?" without that table already written — a confirmation request with nothing to confirm is worse than just proceeding, because it reads as caution while telling them nothing.
+**Put the proposed changes in front of the user before you PATCH anything.** A short before/after table of every field you intend to touch, plus the step-8 worksheet. This is their advisory and the reporter sees the result, so they need to review the content, not authorise a black box. Never ask "shall I update the advisory?" without that table already written — a confirmation request with nothing to confirm is worse than just proceeding, because it reads as caution while telling them nothing.
 
 Partial updates are the standard failure. Walk the whole list:
 
 - `summary` — **the one everyone forgets.** Lowering severity while the title still reads "Authorization Bypass" or "Arbitrary Code Execution" leaves the two contradicting each other, and the title is what appears in listings, Dependabot alerts and downstream mirrors. Rewrite it to describe the defect.
 - `severity`
 - `cvss_vector_string` — clear it or replace it. A vector left in place **drives the displayed severity**, so it will override the severity you just set. Omitting it lets your chosen severity stand, which is often what you want when an honest vector still computes higher than the severity you can defend.
-- `cwe_ids` — reclassify when the framing changed (CWE-863 authorization bypass → CWE-670 always-incorrect control flow, say)
+- `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so
 - `vulnerable_version_range` and `patched_versions` — do not promise a patched version for a fix that has not landed; re-check the merge state rather than assuming
 - the description — rewrite it to **stand alone**. It is published to people who never saw the report, so it states the defect, the real preconditions, and what the attacker does and does not control. Corrections to the reporter's claims go in the reply, not here. A description carrying "the impact is smaller than reported" or "what the report missed" reads as half of a conversation the reader cannot see, and it is the most common thing to get wrong at this step. Grep your draft for "report" before sending it.
 
@@ -133,8 +188,7 @@ Verify by re-fetching. Do not trust the PATCH response you did not read.
 
 **Gotchas worth knowing before you start:**
 
-- **There is no API for advisory comments.** No REST endpoint, and GraphQL has no `RepositoryAdvisory` type at all — only the read-only global `SecurityAdvisory`, which has no comments field. Replies have to be posted by hand. **Do not drive a browser to post or edit them** — it is slow, error-prone (the comment box shares a hidden mirror with the description field, kebab menus target the wrong node), and the user can paste the text themselves in under three minutes. Always hand the reply back as a **direct advisory link plus the comment body in a copy-paste fenced block** (see step 12 for the exact shape). Never imply you posted it, and never claim to have read a reply you cannot fetch.
-- **The severity enum has no "not a vulnerability" value.** Setting `low` on a non-vulnerability is self-contradictory. Use `state: closed` and say why in the reply.
+- **There is no API for advisory comments** (as of August 2026 — re-check if this skill is much older than that). No REST endpoint, and GraphQL has no `RepositoryAdvisory` type at all — only the read-only global `SecurityAdvisory`, which has no comments field. Replies have to be posted by hand. **Do not drive a browser to post or edit them** — it is slow, error-prone (the comment box shares a hidden mirror with the description field, kebab menus target the wrong node), and the user can paste the text themselves in under three minutes. Always hand the reply back as a **direct advisory link plus the comment body in a copy-paste fenced block** (see step 12 for the exact shape). Never imply you posted it, and never claim to have read a reply you cannot fetch.
 - **`triage` → `draft` is the maintainer accepting the submission**, not a side effect of your edit; `submission.accepted` flips at the same time. Before reporting any field change as something you caused, check whether your payload even contained that field.
 - Publishing even a `low` advisory fires Dependabot for every dependent. When the fix ships in a normal patch release anyway, raise "publish or just release" as a deliberate choice rather than defaulting either way.
 
@@ -142,7 +196,7 @@ Verify by re-fetching. Do not trust the PATCH response you did not read.
 
 Blunt and factual. Publishing exposes the advisory *content* — summary, description, severity, credits. The comment thread with the reporter stays private, so you are writing for them, not for a future audience. Do not invoke publication as a reason to soften, restructure, or hedge the reply.
 
-Structure that works: concede what reproduced, correct the vector axis by axis with the evidence from steps 5 and 6, name what they missed from step 3, then state what you are fixing and that it lands on its own merits.
+Structure that works: concede what reproduced, correct the vector axis by axis from the step-8 worksheet with the evidence from steps 5 and 6, name what they missed from step 3, then state what you are fixing and that it lands on its own merits. For a step-7 cluster, name the sibling advisories that share the root cause.
 
 Two things to get right. Build the argument only on premises that are expensive to falsify — the cheap-to-falsify kind hands the reporter the thread, as in step 5. And keep the criticism factual rather than sharpened; the facts do more damage than adjectives.
 
@@ -154,9 +208,10 @@ If the user's project has a text-humanising skill, run the draft through it befo
 
 Close with:
 
+- **Verdict** — one of the four, per advisory (and per cluster on a bulk drop)
 - **What was verified** — the literal reproduction output, and which claims held versus failed
-- **Honest severity** — with the axis-by-axis reasoning, and the CVE recommendation
-- **Anything the report missed** — extra defects, and any cross-report chain
+- **Honest severity** — the step-8 worksheet, and the CVE recommendation
+- **Anything the report missed** — extra defects, root-cause clusters, and any cross-report chain
 - **Advisory fields changed** — before and after, confirmed by re-fetching
 - **The drafted reply(ies)** — in the step-12 delivery format: per advisory, a direct link plus the comment in a copy-paste fenced block, with any no-change-needed ones flagged
 - **What needs the user's own hands** — pasting the comment (link + block provided), publishing, closing, and any fix still unwritten
