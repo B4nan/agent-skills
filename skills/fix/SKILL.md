@@ -69,7 +69,7 @@ Before declaring done, critically review your diff:
 
 Then get an external review of the changes:
 
-1. Run `/staff-review apply` (`/b4nan:staff-review apply` when installed from the plugin). The `apply` token tells the skill to auto-apply surgical fixes for every finding whose final severity is `medium`, `high`, or `critical`, and to skip / only report `low` / `nit` / `suggestion`. Do not run `/staff-review` without `apply` here and then re-implement the fixing yourself — that duplicates the skill's own apply branch. After it returns, re-run the relevant tests on whatever it touched. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
+1. Run `/staff-review apply` (`/b4nan:staff-review apply` when installed from the plugin). The `apply` token tells the skill to auto-apply surgical fixes for every verified finding that is a real improvement, regardless of severity, skipping only those whose fix is unnecessary or disproportionately complex. Do not run `/staff-review` without `apply` here and then re-implement the fixing yourself — that duplicates the skill's own apply branch. After it returns, re-run the relevant tests on whatever it touched. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
 
 Only proceed to commit once the review is clean (or remaining findings are explicitly low-severity).
 
