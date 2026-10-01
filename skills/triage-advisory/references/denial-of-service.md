@@ -13,7 +13,7 @@ Reports in this family claim unbounded recursion, catastrophic regex backtrackin
 - Blocking the event loop or crashing the process affects every user: availability impact can be high.
 - A catchable error on one malformed request affects only that request: usually low or none.
 - An upstream request-size or depth limit that every realistic deployment has (HTTP body limits, JSON parser limits) bounds the input; say what bound applies.
-- Gate 1 still applies: the input has to reach the code through a public entry point at runtime.
+- Gate 1 still applies: the input has to reach the code through the documented surface (SKILL.md gate 1).
 
 ## Narrowest fix
 

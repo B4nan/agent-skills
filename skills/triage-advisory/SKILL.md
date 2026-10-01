@@ -17,11 +17,11 @@ Every advisory ends in exactly one of these. Steps 1–8 decide which; steps 9�
 | Verdict | When | Advisory | CVE | Fix | Reply |
 |---|---|---|---|---|---|
 | **Vulnerability** | Untrusted party reaches the defect through a documented surface and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships (for `low`, see the publish-or-release gotcha in step 11) | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
-| **Already fixed** | Passes the step-8 gate on the affected version, but a released version no longer has it | Keep, set `patched_versions` to that release, and publish (close only if no supported range is affected) | Same as above | None, unless a supported older line needs a backport | Point to the release |
+| **Already fixed** | Passes the step-8 gate on the affected version, but a released version no longer has it | Keep, set `patched_versions` to that release; publish vs close is the same deliberate choice as the step-11 gotcha (publishing alerts everyone still on the affected range, which is the point even when that range is out of support) | Same as above | None, unless a supported older line needs a backport | Point to the release |
 | **Hardening bug** | Real defect, but no untrusted party can reach it, or it is outside the tool's threat model | `state: closed` | No | Yes, as ordinary correctness in a normal release | Explain the trust model; thank them for the bug |
 | **Not a defect** | Nothing worth changing: the code behaves as intended or documented, or the effect is inert and the code needs no change | `state: closed` | No | No | Explain what actually happens and why |
 
-The severity enum has no "not a vulnerability" value, so the last two close with `severity: null` rather than carry a `low`.
+The severity enum has no "not a vulnerability" value, so the last two close with `severity: null` and `cvss_vector_string: null` rather than carry a `low`.
 
 ## Bug-class references
 
@@ -38,7 +38,7 @@ Specifics for common report classes live in `references/`. Read the matching fil
 gh api /repos/{owner}/{repo}/security-advisories/{ghsa-id}
 ```
 
-Note `severity`, `cvss.vector_string` or `cvss_severities.cvss_v4.vector_string`, `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
+Note `severity`, both `cvss.vector_string` and `cvss_severities.{cvss_v3,cvss_v4}.vector_string` (the reporter may have filed either version), `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
 
 Then list every advisory on the repo (`gh api --paginate /repos/{owner}/{repo}/security-advisories`), closed and published included. If you or a co-maintainer already ruled on the same bug class, reuse that verdict and its reasoning, or say explicitly why this one differs. Inconsistent rulings across advisories are the first thing a persistent reporter will quote back.
 
@@ -80,11 +80,11 @@ Enumerate exhaustively where the tainted value can come from: config keys, envir
 
 This is what turns a "High — arbitrary code execution" into not a vulnerability. When the only supplier of the input is the developer running a command on their own machine, they could already execute arbitrary code without going through the reported path. No privilege boundary is crossed, so there is nothing to escalate.
 
-Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project — unless step 8's pass-through test shows the documented usage forwards untrusted data there. Say which it is explicitly; it is the reporter's most likely comeback.
+Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project, unless gate 1's pass-through test (step 8) says otherwise. Say which; it is the reporter's most likely comeback.
 
 ## 7. Bulk drops: group by root cause, then look for chains
 
-**Group first.** Reporters filing in bulk often submit the same mechanism several times — one unguarded pattern hit at different call sites, one missing check reached through different options. Cluster the advisories by mechanism before rating any of them. Each cluster is one investigation and one fix: grep for the pattern beyond the reported sites, since the reporter rarely found them all. Give every advisory in a cluster the same verdict and severity unless reachability differs per site (one call site reachable from a public runtime option, another only from developer config); when it does, say which site and why in each reply. Cross-reference the siblings in each reply ("same root cause as <advisory>, fixed together").
+**Group first.** Reporters filing in bulk often submit the same mechanism several times — one unguarded pattern hit at different call sites, one missing check reached through different options. Cluster the advisories by mechanism before rating any of them. Each cluster is one investigation and one fix: grep for the pattern beyond the reported sites, since the reporter rarely found them all. Give every advisory in a cluster the same verdict and severity unless reachability or effect differs per site (one call site reachable from a public runtime option and another only from developer config, or one mutating a throwaway copy and another shared state); when it does, say which site and why in each reply. Cross-reference the siblings in each reply ("same root cause as <advisory>, fixed together").
 
 **Then look for chains.** Check whether any two clusters compose. Reporters filing in bulk usually miss this because they write each one in isolation. The typical shape: one report controls *where* something is written, loaded, or executed, and another controls *what* — together they put attacker-chosen content somewhere the application trusts, which is worse than either alone.
 
@@ -94,14 +94,14 @@ If you find a chain, decide what it means for your ratings before you publish th
 
 ### The gate
 
-Answer these in order. The first "no" ends the vulnerability question: the verdict is **hardening bug**, or **not a defect** when there is nothing worth changing (step 2 showed nothing broken, or gate 3 found the effect inert and the code needs no change).
+Answer these in order. The first "no" ends the vulnerability question: the verdict is **hardening bug**, or **not a defect** when there is nothing worth changing (see the verdict table).
 
-1. **Documented surface**: can a value an untrusted party wrote reach the defect through the documented surface? That means a public function called the way a pass-through application calls it, *or* a documented command (CLI, generator, CI step) run against a source that party can write to: a database, repository, or remote service.
+1. **Documented surface**: can the value reach the defect through the documented surface? That means a public function called the way a pass-through application calls it, *or* a documented command (CLI, generator, CI step) run against a source the tool treats as data: records in a remote service, files users upload, database contents. A source the tool documents as code or configuration it will execute (a lockfile, build script, config file, plugin list) does not count, however the attacker got write access to it.
 2. **Untrusted party**: in a normal deployment, can anyone other than the application's own developers set that value? Answer from the evidence of steps 5 and 6, not by reasoning about it.
 3. **Real effect**: is the outcome consequential (shared state corrupted, a real authorization or filter bypass, code execution), rather than inert (a throwaway object, a catchable error on malformed input)?
 4. **Threat model**: is the scenario inside what the tool ever claimed to defend?
 
-All four "yes" → **vulnerability**. One exception to "first no ends it": **be honest when a boundary genuinely is crossed.** Something that turns write access to one system into code execution on a developer machine or CI runner is a real escalation even when the preconditions are narrow and the tool is dev-time only, and conceding it costs nothing while denying it costs the whole argument.
+All four "yes" → **vulnerability**. One exception to "first no ends it", at gate 4 only: when gate 1 passed through a data source and an untrusted party's write becomes code execution on a developer machine or CI runner, the verdict is **vulnerability** even though the tool is dev-time only. Record the narrow preconditions in the worksheet (e.g. `AC:H`, `UI:R`, `PR` as measured), not as a dismissal. Conceding it costs nothing; denying it costs the whole argument.
 
 Whatever the verdict, fill in the worksheet at the end of this step: on a closed verdict it is still the axis-by-axis rebuttal the reply needs.
 
@@ -111,11 +111,9 @@ A library's contract is its public surface, so a sink reachable *only* by the li
 
 So reproduce the *pass-through* path (step 2): assign the parsed-JSON object to the public parameter type and call the public function, exactly as such an app would. If the payload reaches the sink that way, it is reachable, whatever the types say.
 
-Only dismiss on reachability when the value genuinely cannot arrive through any public parameter an application populates from untrusted data, or through any source a documented command reads that an untrusted party can write to. When it can, and the effect is real, hardening the code and rating the severity are the same conclusion, not opposites.
-
 ### Gate 2: who can set the value
 
-Inputs that only the application's own developers write are not a vulnerability boundary, however dangerous the sink they reach: whoever sets that value already controls the surrounding code, so there is no privilege to escalate. Definition and configuration surfaces are the usual trap — data-model and schema definitions, route and handler tables, build and framework config, plugin registration, any structure the developer authors for the framework to compile or wire up. A payload arriving through one of those is a developer injecting code into their own program.
+Inputs that only the application's own developers write are not a vulnerability boundary, however dangerous the sink they reach: whoever sets that value already controls the surrounding code, so there is no privilege to escalate. Definition and configuration surfaces are the usual trap — route and handler tables, build and framework config, plugin registration, data-model and schema definitions, any structure the developer authors for the framework to compile or wire up. A payload arriving through one of those is a developer injecting code into their own program.
 
 Have the answer to the reporter's likely escape hatch ready: *"a dynamic or multi-tenant app might build this structure from user input."* A fast falsifier is to check whether that same value, in that same hypothetical app, also flows into a second sink the framework already treats as trusted — an identifier, a file path, a compiled name. If it does, any app exposing the value to users is already broken through that more direct path, which confirms the value was never a user-facing input in the first place: the premise defeats itself rather than establishing a vector. Say that explicitly.
 
@@ -125,7 +123,7 @@ The verdict turns on **effect**, not on how exotic the shape looks. When the eff
 
 ### Gate 4: threat model
 
-This question decides most of these: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool input an untrusted party controls is outside its threat model however severe the payload gets. `npm install` against a hostile lockfile is the familiar version of this. The boundary-crossing exception under the gate still applies.
+This question decides most of these: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool input an untrusted party controls is outside its threat model however severe the payload gets. `npm install` against a hostile lockfile is the familiar version of this. The line is what the tool says about the input: a lockfile is declared code, a record in a remote service is declared data (gate 1).
 
 Prefer this argument. Privilege-based arguments can be falsified by a reporter with a terminal, as in step 5. The trust-model argument cannot, because it is about what the tool is for.
 
@@ -139,11 +137,12 @@ Fill this in for every advisory. It feeds the field table in step 11 and the rep
 
 Recurring inflation patterns:
 
-- `PR:L` where the attack actually requires a role, grant, or ownership the attacker would not normally hold
+- `PR:L` where the attack actually requires a role, permission, or ownership the attacker would not normally hold
 - `AC:L` where it requires a developer to point a dev-time CLI at hostile input
 - `UI:N` where a human has to run something for the payload to fire
 - `S:C` (or non-zero subsequent-system impact in 4.0) where no privilege domain is actually crossed
-- `C:H` beside `I:N/A:N` when the same defect also destroys or corrupts data. Impact zeroed on the axes that are genuinely worse is a strong sign the vector was fitted to the write-up rather than measured — say so.
+- `AT:N` (4.0) where the attack depends on a deployment precondition the reporter assumes
+- `C:H` beside `I:N/A:N` (`VC`/`VI`/`VA` in 4.0) when the same defect also destroys or corrupts data. Impact zeroed on the axes that are genuinely worse is a strong sign the vector was fitted to the write-up rather than measured — say so.
 - severity anchored to a narrative ("the third library in a row with this bug class") rather than to the artifact
 
 ## 9. Decide on a CVE
@@ -169,8 +168,8 @@ If a project skill for fixing bugs exists (`/fix`, or `/polish` for finishing a 
 Partial updates are the standard failure. Walk the whole list:
 
 - `summary` — **the one everyone forgets.** Lowering severity while the title still reads "Authorization Bypass" or "Arbitrary Code Execution" leaves the two contradicting each other, and the title is what appears in listings, Dependabot alerts and downstream mirrors. Rewrite it to describe the defect.
-- `severity` — on a closed verdict send `null`, not `low`
-- `cvss_vector_string` — clear it or replace it. A vector left in place **drives the displayed severity**, so it will override the severity you just set. Omitting it lets your chosen severity stand, which is often what you want when an honest vector still computes higher than the severity you can defend.
+- `severity` — on a closed verdict send `null`, not `low`, and clear `cvss_vector_string` in the same PATCH; otherwise the reporter's vector keeps computing a severity
+- `cvss_vector_string` — replace it, or send `null` to clear it. A field left out of the payload keeps the old vector, which **drives the displayed severity** and overrides the severity you just set. With no vector, your chosen `severity` stands, which is often what you want when an honest vector still computes higher than the severity you can defend.
 - `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so (e.g. CWE-863 → CWE-670 or CWE-20)
 - `vulnerable_version_range` and `patched_versions` — do not promise a patched version for a fix that has not landed; re-check the merge state rather than assuming
 - the description — rewrite it to **stand alone**. It is published to people who never saw the report, so it states the defect, the real preconditions, and what the attacker does and does not control. Corrections to the reporter's claims go in the reply, not here. A description carrying "the impact is smaller than reported" or "what the report missed" reads as half of a conversation the reader cannot see, and it is the most common thing to get wrong at this step. Grep your draft for "report" before sending it.
@@ -205,7 +204,7 @@ Close with:
 
 - **Verdict** — one of the four, per advisory (and per cluster on a bulk drop)
 - **What was verified** — the literal reproduction output, and which claims held versus failed
-- **Honest severity** — the step-8 worksheet, and the CVE recommendation
+- **Honest severity** — the step-8 worksheet, the CVE recommendation, and which earlier advisory's ruling it follows or departs from (step 1)
 - **Anything the report missed** — extra defects, root-cause clusters, and any cross-report chain
 - **Advisory fields changed** — before and after, confirmed by re-fetching
 - **The drafted reply(ies)** — in the step-12 delivery format: per advisory, a direct link plus the comment in a copy-paste fenced block, with any no-change-needed ones flagged
