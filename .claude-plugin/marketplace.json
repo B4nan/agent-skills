@@ -1,0 +1,18 @@
+{
+  "name": "b4nan-skills",
+  "owner": {
+    "name": "Martin Adámek",
+    "url": "https://github.com/B4nan"
+  },
+  "metadata": {
+    "description": "Agent skills by Martin Adámek"
+  },
+  "plugins": [
+    {
+      "name": "b4nan",
+      "source": "./",
+      "description": "Code review, bug fixing, polishing and security advisory triage skills: staff-review (plus -loop and -inline wrappers), fix, polish, triage-advisory",
+      "category": "development"
+    }
+  ]
+}
