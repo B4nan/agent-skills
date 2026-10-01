@@ -4,14 +4,14 @@ Reports in this family claim unbounded recursion, catastrophic regex backtrackin
 
 ## What to measure
 
-- **Recursion:** find the input depth at which it fails and what it fails with. In JS, stack overflow is a `RangeError` that the caller can usually catch, so it fails one request, not the process. Check whether anything in the path turns it into a crash (an uncaught error in a callback or stream, an unhandled promise rejection, which terminates Node by default since v15, a worker exit).
+- **Recursion:** find the input depth at which it fails and what it fails with. In JS, stack overflow is a `RangeError` that the caller can usually catch, so it fails one request, not the process. Check whether anything in the path turns it into a crash (an uncaught error in a callback or stream, an unhandled promise rejection (fatal by default since Node 15), a worker exit).
 - **ReDoS:** time the regex on growing inputs (e.g. 1k, 10k, 100k characters of the pathological pattern) and report the numbers. Linear growth is not ReDoS. Note any length limit applied before the regex runs.
 - **Allocation:** measure peak memory for realistic maximum input sizes, after any body-size limit the documented deployment applies.
 
 ## Telling severity
 
 - Blocking the event loop or crashing the process affects every user: availability impact can be high.
-- A catchable error on one malformed request affects only that request: usually low or none.
+- A catchable error on one malformed request affects only that request: hardening bug (gate 3 "no"), unless the documented usage leaves it uncaught.
 - An upstream request-size or depth limit that every realistic deployment has (HTTP body limits, JSON parser limits) bounds the input; say what bound applies.
 - Gate 1 still applies: the input has to reach the code through the documented surface (SKILL.md gate 1).
 
