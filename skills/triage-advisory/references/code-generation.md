@@ -1,6 +1,6 @@
 # Code generation and escaping
 
-Reports in this family claim a value is interpolated into generated source (JS/TS emitted at runtime or by a CLI, SQL, templates, config files) without proper escaping.
+Reports in this family claim a value is interpolated into generated source (JS/TS emitted at runtime or by a CLI, templates, config files) without proper escaping.
 
 ## Reading the escaping helper
 
@@ -9,7 +9,7 @@ Walk every branch of the helper against every metacharacter of the *target* gram
 - string delimiters for each quote style the generator emits (`'`, `"`, backtick)
 - the backslash itself (escaping the quote but not the backslash re-opens the string)
 - template interpolation (`${` inside backtick strings)
-- line terminators, including ` ` / ` ` in older JS targets
+- line terminators, including `\u2028` / `\u2029` in older JS targets
 - comment terminators (`*/`) when values land inside comments
 - identifier rules when values become property, class, or variable names: an identifier cannot be "escaped", it has to be validated or quoted as a computed key
 

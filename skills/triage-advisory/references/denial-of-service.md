@@ -4,7 +4,7 @@ Reports in this family claim unbounded recursion, catastrophic regex backtrackin
 
 ## What to measure
 
-- **Recursion:** find the input depth at which it fails and what it fails with. In JS, stack overflow is a `RangeError` that the caller can usually catch, so it fails one request, not the process. Check whether anything in the path turns it into a crash (an uncaught error in a callback or stream, a worker exit).
+- **Recursion:** find the input depth at which it fails and what it fails with. In JS, stack overflow is a `RangeError` that the caller can usually catch, so it fails one request, not the process. Check whether anything in the path turns it into a crash (an uncaught error in a callback or stream, an unhandled promise rejection, which terminates Node by default since v15, a worker exit).
 - **ReDoS:** time the regex on growing inputs (e.g. 1k, 10k, 100k characters of the pathological pattern) and report the numbers. Linear growth is not ReDoS. Note any length limit applied before the regex runs.
 - **Allocation:** measure peak memory for realistic maximum input sizes, after any body-size limit the documented deployment applies.
 

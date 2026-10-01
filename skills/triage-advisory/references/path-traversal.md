@@ -4,7 +4,7 @@ Reports in this family claim an attacker-influenced value becomes part of a file
 
 ## What to check
 
-- Which part of the path the value controls: a file name, a directory segment, or the whole path. Absolute paths and drive letters bypass naive `path.join` prefixes; `..` segments bypass naive string checks.
+- Which part of the path the value controls: a file name, a directory segment, or the whole path. `..` segments defeat a naive `path.join` (`path.join('/base', '../etc/passwd')` → `/etc/passwd`); absolute paths, drive letters and UNC paths defeat `path.resolve(base, value)`, because a rooted later argument replaces the base (`path.resolve('/base', '/etc/passwd')` → `/etc/passwd`). Either way, check containment on the resolved result.
 - Whether the code resolves and contains the result: `path.resolve(base, value)` followed by a check that the result stays under `base` (with a trailing separator, so `/base-evil` does not pass a `/base` prefix check).
 - Symlinks inside the base directory, if the attacker can create them.
 - Read vs write. Writes that land on a file the application later loads or executes are the severe case, and pair with any report that controls file *contents* (see the chain section in SKILL.md).

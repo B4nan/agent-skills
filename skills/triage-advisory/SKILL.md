@@ -16,12 +16,21 @@ Every advisory ends in exactly one of these. Steps 1–8 decide which; steps 9�
 
 | Verdict | When | Advisory | CVE | Fix | Reply |
 |---|---|---|---|---|---|
-| **Vulnerability** | Untrusted party reaches the defect through a public entry point and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
-| **Already fixed** | Vulnerability that a released version no longer has | Keep, set `patched_versions` to that release, publish or close (deliberate choice, step 11) | Same as above | None to write | Point to the release |
+| **Vulnerability** | Untrusted party reaches the defect through a documented surface and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships (for `low`, see the publish-or-release gotcha in step 11) | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
+| **Already fixed** | Passes the step-8 gate on the affected version, but a released version no longer has it | Keep, set `patched_versions` to that release, and publish (close only if no supported range is affected) | Same as above | None, unless a supported older line needs a backport | Point to the release |
 | **Hardening bug** | Real defect, but no untrusted party can reach it, or it is outside the tool's threat model | `state: closed` | No | Yes, as ordinary correctness in a normal release | Explain the trust model; thank them for the bug |
-| **Not a defect** | Code behaves as intended or documented | `state: closed` | No | No | Explain what actually happens and why |
+| **Not a defect** | Nothing worth changing: the code behaves as intended or documented, or the effect is inert and the code needs no change | `state: closed` | No | No | Explain what actually happens and why |
 
-The severity enum has no "not a vulnerability" value, so the last two close rather than carry a `low`.
+The severity enum has no "not a vulnerability" value, so the last two close with `severity: null` rather than carry a `low`.
+
+## Bug-class references
+
+Specifics for common report classes live in `references/`. Read the matching file before step 3: it lists what to check while reading the function, how to tell inert from consequential (step 8), and what the narrowest fix looks like (step 10).
+
+- `references/prototype-pollution.md`: `__proto__` / `constructor` keys, unsafe merges and copies
+- `references/code-generation.md`: escaping and injection into generated source
+- `references/denial-of-service.md`: unbounded recursion, ReDoS, resource exhaustion
+- `references/path-traversal.md`: attacker-influenced file paths
 
 ## 1. Read the advisory, and what came before it
 
@@ -29,9 +38,9 @@ The severity enum has no "not a vulnerability" value, so the last two close rath
 gh api /repos/{owner}/{repo}/security-advisories/{ghsa-id}
 ```
 
-Note `severity`, `cvss.vector_string`, `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
+Note `severity`, `cvss.vector_string` or `cvss_severities.cvss_v4.vector_string`, `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
 
-Then list every advisory on the repo (`gh api /repos/{owner}/{repo}/security-advisories`), closed and published included. If you or a co-maintainer already ruled on the same bug class, reuse that verdict and its reasoning, or say explicitly why this one differs. Inconsistent rulings across advisories are the first thing a persistent reporter will quote back.
+Then list every advisory on the repo (`gh api --paginate /repos/{owner}/{repo}/security-advisories`), closed and published included. If you or a co-maintainer already ruled on the same bug class, reuse that verdict and its reasoning, or say explicitly why this one differs. Inconsistent rulings across advisories are the first thing a persistent reporter will quote back.
 
 If the user dropped several advisories at once, read every one before triaging any. Step 7 depends on it.
 
@@ -61,7 +70,7 @@ When you find this, it tells you two things: the bug is real, and it is mundane 
 
 This is normally the crux, and it is where instinct is least reliable. Do not reason about the required privilege — test it.
 
-The tempting dismissal is "anyone who can do that already has enough access to cause worse damage directly, so there is no vector here." It is often false. Provision an account with *only* the single permission the attack needs, and nothing else: it can frequently plant the payload while being denied the broader access the argument assumed it implied. A reporter with a terminal refutes that dismissal in thirty seconds.
+The tempting dismissal is "anyone who can do that already has enough access to cause worse damage directly, so there is no vector here." It is often false. Provision an account with *only* the single permission the attack needs, and nothing else: it may well plant the payload while being denied the broader access the argument assumed it implied. A reporter with a terminal refutes that dismissal in thirty seconds.
 
 The same test can just as easily show that no ordinary, correctly provisioned account reaches the code at all — which is a far stronger argument against the reported severity. Empirical beats intuitive in both directions: run the test before you rely on the claim in public.
 
@@ -75,7 +84,7 @@ Watch for the public-API caveat: if a library function *could* be called with un
 
 ## 7. Bulk drops: group by root cause, then look for chains
 
-**Group first.** Reporters filing in bulk often submit the same mechanism several times — one unguarded pattern hit at different call sites, one missing check reached through different options. Cluster the advisories by mechanism before rating any of them. Each cluster is one investigation and one fix: grep for the pattern beyond the reported sites, since the reporter rarely found them all. Give every advisory in a cluster the same verdict and severity, and cross-reference the siblings in each reply ("same root cause as <advisory>, fixed together").
+**Group first.** Reporters filing in bulk often submit the same mechanism several times — one unguarded pattern hit at different call sites, one missing check reached through different options. Cluster the advisories by mechanism before rating any of them. Each cluster is one investigation and one fix: grep for the pattern beyond the reported sites, since the reporter rarely found them all. Give every advisory in a cluster the same verdict and severity unless reachability differs per site (one call site reachable from a public runtime option, another only from developer config); when it does, say which site and why in each reply. Cross-reference the siblings in each reply ("same root cause as <advisory>, fixed together").
 
 **Then look for chains.** Check whether any two clusters compose. Reporters filing in bulk usually miss this because they write each one in isolation. The typical shape: one report controls *where* something is written, loaded, or executed, and another controls *what* — together they put attacker-chosen content somewhere the application trusts, which is worse than either alone.
 
@@ -85,44 +94,24 @@ If you find a chain, decide what it means for your ratings before you publish th
 
 ### The gate
 
-Answer these in order. The first "no" ends the vulnerability question: the verdict is **hardening bug** (or **not a defect** if step 2 showed nothing broken).
+Answer these in order. The first "no" ends the vulnerability question: the verdict is **hardening bug**, or **not a defect** when there is nothing worth changing (step 2 showed nothing broken, or gate 3 found the effect inert and the code needs no change).
 
-1. **Public entry point** — can the value reach the defect through the documented, exported surface, called the way a pass-through application calls it, at runtime?
-2. **Untrusted party** — in a normal deployment, can anyone other than the application's own developers set that value?
-3. **Real effect** — is the outcome consequential (shared state corrupted, a real authorization or filter bypass, code execution), rather than inert (a throwaway object, a catchable error on malformed input)?
-4. **Threat model** — is the scenario inside what the tool ever claimed to defend?
+1. **Documented surface**: can a value an untrusted party wrote reach the defect through the documented surface? That means a public function called the way a pass-through application calls it, *or* a documented command (CLI, generator, CI step) run against a source that party can write to: a database, repository, or remote service.
+2. **Untrusted party**: in a normal deployment, can anyone other than the application's own developers set that value? Answer from the evidence of steps 5 and 6, not by reasoning about it.
+3. **Real effect**: is the outcome consequential (shared state corrupted, a real authorization or filter bypass, code execution), rather than inert (a throwaway object, a catchable error on malformed input)?
+4. **Threat model**: is the scenario inside what the tool ever claimed to defend?
 
-All four "yes" → **vulnerability**; rate it honestly with the worksheet below.
+All four "yes" → **vulnerability**. One exception to "first no ends it": **be honest when a boundary genuinely is crossed.** Something that turns write access to one system into code execution on a developer machine or CI runner is a real escalation even when the preconditions are narrow and the tool is dev-time only, and conceding it costs nothing while denying it costs the whole argument.
 
-### The worksheet
+Whatever the verdict, fill in the worksheet at the end of this step: on a closed verdict it is still the axis-by-axis rebuttal the reply needs.
 
-Fill this in for every advisory you rate. It feeds the field table in step 11 and the reply in step 12, so write it once and reuse it.
-
-| Axis | Reporter | Ours | Evidence |
-|---|---|---|---|
-| AV | | | |
-| AC | | | |
-| PR | | | step 5 result |
-| UI | | | |
-| S | | | |
-| C | | | |
-| I | | | |
-| A | | | |
-
-Recurring inflation patterns:
-
-- `PR:L` where the attack actually requires a role, grant, or ownership the attacker would not normally hold
-- `AC:L` where it requires a developer to point a dev-time CLI at hostile input
-- `UI:N` where a human has to run something for the payload to fire
-- `S:C` where no privilege domain is actually crossed
-- `C:H` beside `I:N/A:N` when the same defect also destroys or corrupts data. Impact zeroed on the axes that are genuinely worse is a strong sign the vector was fitted to the write-up rather than measured — say so.
-- severity anchored to a narrative ("the third library in a row with this bug class") rather than to the artifact
-
-### Gate 1: public entry point
+### Gate 1: documented surface
 
 A library's contract is its public surface, so a sink reachable *only* by the library's own internal construction, or by calling an unexported helper directly, is not a public vector. But **the type system is not the boundary, so "it wouldn't type-check" is not a dismissal.** Untrusted input routinely enters a typed API as `any`: `JSON.parse(body)` returns `any`, and `any` assigns to any declared parameter type with no cast anyone has to write. An application that forwards a parsed request body into a public options or data argument hands the attacker every runtime-reachable field, including ones the declared type would reject as a literal.
 
 So reproduce the *pass-through* path (step 2): assign the parsed-JSON object to the public parameter type and call the public function, exactly as such an app would. If the payload reaches the sink that way, it is reachable, whatever the types say.
+
+Only dismiss on reachability when the value genuinely cannot arrive through any public parameter an application populates from untrusted data, or through any source a documented command reads that an untrusted party can write to. When it can, and the effect is real, hardening the code and rating the severity are the same conclusion, not opposites.
 
 ### Gate 2: who can set the value
 
@@ -132,24 +121,30 @@ Have the answer to the reporter's likely escape hatch ready: *"a dynamic or mult
 
 ### Gate 3: effect
 
-Once reachability holds for an untrusted party, the verdict turns on **effect**, not on how exotic the shape looks. Reachable and inert: dismiss on impact, and say it is reachable and why it is harmless — do not reach for "internal method" or "needs a cast", which are weaker lines a reporter will knock down. Reachable and consequential: this is a vulnerability; do not talk yourself out of it because the trigger looked like a typing mistake.
-
-Only dismiss on reachability when the value genuinely cannot arrive through any public parameter an application populates from untrusted data. When it can, and the effect is real, hardening the code and rating the severity are the same conclusion, not opposites.
-
-**Bug-class specifics** — how to tell inert from consequential, and what the narrowest fix looks like — live in `references/`. Read the matching file only when the report falls in that class:
-
-- `references/prototype-pollution.md` — `__proto__` / `constructor` keys, unsafe merges and copies
-- `references/code-generation.md` — escaping and injection into generated source
-- `references/denial-of-service.md` — unbounded recursion, ReDoS, resource exhaustion
-- `references/path-traversal.md` — attacker-influenced file paths
+The verdict turns on **effect**, not on how exotic the shape looks. When the effect is inert, dismiss on impact: say it is reachable and why it is harmless. Do not reach for "internal method" or "needs a cast", which are weaker lines a reporter will knock down. When it is consequential, do not talk yourself out of it because the trigger looked like a typing mistake. The matching file in `references/` has the class-specific test for inert versus consequential.
 
 ### Gate 4: threat model
 
-This question decides most of these: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool input an untrusted party controls is outside its threat model however severe the payload gets. `npm install` against a hostile lockfile is the familiar version of this.
+This question decides most of these: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool input an untrusted party controls is outside its threat model however severe the payload gets. `npm install` against a hostile lockfile is the familiar version of this. The boundary-crossing exception under the gate still applies.
 
 Prefer this argument. Privilege-based arguments can be falsified by a reporter with a terminal, as in step 5. The trust-model argument cannot, because it is about what the tool is for.
 
-Be honest when a boundary genuinely is crossed. Something that turns write access to one system into code execution on a developer machine or CI runner is a real escalation even when the preconditions are narrow, and conceding it costs nothing while denying it costs the whole argument.
+### The worksheet
+
+Fill this in for every advisory. It feeds the field table in step 11 and the reply in step 12, so write it once and reuse it. Use one row per base metric of the reporter's vector: AV, AC, PR, UI, S, C, I, A for CVSS 3.1; AV, AC, AT, PR, UI, VC, VI, VA, SC, SI, SA for CVSS 4.0.
+
+| Axis | Reporter | Ours | Evidence |
+|---|---|---|---|
+| PR | L | H | step 5: a single-permission account was denied … |
+
+Recurring inflation patterns:
+
+- `PR:L` where the attack actually requires a role, grant, or ownership the attacker would not normally hold
+- `AC:L` where it requires a developer to point a dev-time CLI at hostile input
+- `UI:N` where a human has to run something for the payload to fire
+- `S:C` (or non-zero subsequent-system impact in 4.0) where no privilege domain is actually crossed
+- `C:H` beside `I:N/A:N` when the same defect also destroys or corrupts data. Impact zeroed on the axes that are genuinely worse is a strong sign the vector was fitted to the write-up rather than measured — say so.
+- severity anchored to a narrative ("the third library in a row with this bug class") rather than to the artifact
 
 ## 9. Decide on a CVE
 
@@ -174,9 +169,9 @@ If a project skill for fixing bugs exists (`/fix`, or `/polish` for finishing a 
 Partial updates are the standard failure. Walk the whole list:
 
 - `summary` — **the one everyone forgets.** Lowering severity while the title still reads "Authorization Bypass" or "Arbitrary Code Execution" leaves the two contradicting each other, and the title is what appears in listings, Dependabot alerts and downstream mirrors. Rewrite it to describe the defect.
-- `severity`
+- `severity` — on a closed verdict send `null`, not `low`
 - `cvss_vector_string` — clear it or replace it. A vector left in place **drives the displayed severity**, so it will override the severity you just set. Omitting it lets your chosen severity stand, which is often what you want when an honest vector still computes higher than the severity you can defend.
-- `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so
+- `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so (e.g. CWE-863 → CWE-670 or CWE-20)
 - `vulnerable_version_range` and `patched_versions` — do not promise a patched version for a fix that has not landed; re-check the merge state rather than assuming
 - the description — rewrite it to **stand alone**. It is published to people who never saw the report, so it states the defect, the real preconditions, and what the attacker does and does not control. Corrections to the reporter's claims go in the reply, not here. A description carrying "the impact is smaller than reported" or "what the report missed" reads as half of a conversation the reader cannot see, and it is the most common thing to get wrong at this step. Grep your draft for "report" before sending it.
 
@@ -188,7 +183,7 @@ Verify by re-fetching. Do not trust the PATCH response you did not read.
 
 **Gotchas worth knowing before you start:**
 
-- **There is no API for advisory comments** (as of August 2026 — re-check if this skill is much older than that). No REST endpoint, and GraphQL has no `RepositoryAdvisory` type at all — only the read-only global `SecurityAdvisory`, which has no comments field. Replies have to be posted by hand. **Do not drive a browser to post or edit them** — it is slow, error-prone (the comment box shares a hidden mirror with the description field, kebab menus target the wrong node), and the user can paste the text themselves in under three minutes. Always hand the reply back as a **direct advisory link plus the comment body in a copy-paste fenced block** (see step 12 for the exact shape). Never imply you posted it, and never claim to have read a reply you cannot fetch.
+- **There is no API for advisory comments** (as of August 2026 — re-check if today is well past that date). No REST endpoint, and GraphQL has no `RepositoryAdvisory` type at all — only the read-only global `SecurityAdvisory`, which has no comments field. Replies have to be posted by hand. **Do not drive a browser to post or edit them** — it is slow, error-prone (the comment box shares a hidden mirror with the description field, kebab menus target the wrong node), and the user can paste the text themselves in under three minutes. Always hand the reply back as a **direct advisory link plus the comment body in a copy-paste fenced block** (see step 12 for the exact shape). Never imply you posted it, and never claim to have read a reply you cannot fetch.
 - **`triage` → `draft` is the maintainer accepting the submission**, not a side effect of your edit; `submission.accepted` flips at the same time. Before reporting any field change as something you caused, check whether your payload even contained that field.
 - Publishing even a `low` advisory fires Dependabot for every dependent. When the fix ships in a normal patch release anyway, raise "publish or just release" as a deliberate choice rather than defaulting either way.
 

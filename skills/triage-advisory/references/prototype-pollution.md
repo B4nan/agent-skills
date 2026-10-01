@@ -11,11 +11,11 @@ Always check which one the code actually does: run it, then probe a fresh object
 
 ## Where the keys come from
 
-`JSON.parse` creates `__proto__` as an ordinary **own** property; it does not set the prototype. The key only becomes dangerous when later code assigns it (`target[key] = value`, `Object.assign`, spread into a setter, recursive merge). Object literals in source code (`{ __proto__: x }`) behave differently and are not the attacker's route.
+`JSON.parse` creates `__proto__` as an ordinary **own** property; it does not set the prototype. The key only becomes dangerous when later code assigns it (`target[key] = value`, `Object.assign`, recursive merge). Object spread does not: it copies `__proto__` back as an own key without invoking the setter. Object literals in source code (`{ __proto__: x }`) behave differently and are not the attacker's route.
 
 ## Related lookup bug
 
-`key in lookupObject` and `lookupObject[key]` return inherited members for `constructor`, `toString`, `__proto__` and friends, so user-supplied keys can be misclassified as known operators, handlers, or options. Usually this produces a crash or a wrong branch rather than pollution. Fix with `Object.hasOwn(lookup, key)` or a null-prototype map (`Object.create(null)` / `Map`).
+`key in lookupObject` and `lookupObject[key]` return inherited members for `constructor`, `toString`, `__proto__` and friends, so user-supplied keys can be misclassified as known commands, handlers, or options. Usually this produces a crash or a wrong branch rather than pollution. Fix with `Object.hasOwn(lookup, key)` (`Object.prototype.hasOwnProperty.call(lookup, key)` before Node 16.9) or a null-prototype map (`Object.create(null)` / `Map`).
 
 ## Narrowest fix
 
