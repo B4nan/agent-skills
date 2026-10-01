@@ -1,0 +1,12 @@
+{
+  "name": "b4nan",
+  "description": "Code review, bug fixing, polishing and security advisory triage skills by Martin Adámek",
+  "author": {
+    "name": "Martin Adámek",
+    "url": "https://github.com/B4nan"
+  },
+  "homepage": "https://github.com/B4nan/agent-skills",
+  "repository": "https://github.com/B4nan/agent-skills",
+  "license": "MIT",
+  "keywords": ["code-review", "staff-review", "bug-fix", "polish", "security-advisory", "ghsa", "triage"]
+}
