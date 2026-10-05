@@ -38,7 +38,7 @@ Specifics for common report classes live in `references/`. Read the matching fil
 gh api /repos/{owner}/{repo}/security-advisories/{ghsa-id}
 ```
 
-Note `severity`, both `cvss.vector_string` and `cvss_severities.{cvss_v3,cvss_v4}.vector_string` (the reporter may have filed either version), `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
+Note `severity`, both `cvss_severities.{cvss_v3,cvss_v4}.vector_string` and the legacy `cvss.vector_string` (deprecated but still returned; the reporter may have filed either version), `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
 
 Then list every advisory on the repo (`gh api --paginate /repos/{owner}/{repo}/security-advisories`), closed and published included. If you or a co-maintainer already ruled on the same bug class, reuse that verdict and its reasoning, or say explicitly why this one differs. Inconsistent rulings across advisories are the first thing a persistent reporter will quote back.
 
@@ -101,9 +101,15 @@ Answer these in order. The first "no" ends the vulnerability question: the verdi
 3. **Real effect**: is the outcome consequential (shared state corrupted, a real authorization or filter bypass the documented API does not already grant, code execution), rather than inert (a throwaway object, a catchable error on malformed input)?
 4. **Threat model**: is the scenario inside what the tool ever claimed to defend?
 
-All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a released version no longer has it. One exception to "first no ends it", at gate 4 only: when gate 1 passed through a data source and an untrusted party's write becomes code execution on a developer machine or CI runner, the verdict is **vulnerability** even though the tool is dev-time only. Record the narrow preconditions in the worksheet (e.g. `AC:H`, or `AT:P` in 4.0, `UI:R` (in 4.0, `UI:P` when the developer's action is routine, such as running the generator; `UI:A` only when they must do something specific), `PR` as measured), not as a dismissal. Conceding it costs nothing; denying it costs the whole argument.
+All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a released version no longer has it. One exception to "first no ends it", at gate 4 only: when gate 1 passed through a data source and an untrusted party's write becomes code execution on a developer machine or CI runner, the verdict is **vulnerability** even though the tool is dev-time only. Record the narrow preconditions in the worksheet, not as a dismissal:
 
-Whatever the verdict, fill in the worksheet at the end of this step: on a closed verdict it is still the axis-by-axis rebuttal the reply needs.
+- `AC:H`, or `AT:P` in 4.0, for the deployment precondition
+- `UI:R` in 3.1; in 4.0, `UI:P` when the developer's action is routine (running the generator), `UI:A` only when they must do something specific
+- `PR` as measured in step 5
+
+Conceding it costs nothing; denying it costs the whole argument.
+
+Whatever the verdict, answer the remaining gates too and fill in the worksheet at the end of this step. The first "no" fixes the verdict; the reply leads with the strongest failed gate (gate 4 when it also fails). On a closed verdict the worksheet is still the axis-by-axis rebuttal the reply needs.
 
 ### Gate 1: documented surface
 
@@ -168,7 +174,7 @@ If a project skill for fixing bugs exists (`/fix`, or `/polish` for finishing a 
 Partial updates are the standard failure. Walk the whole list:
 
 - `summary` — **the one everyone forgets.** Lowering severity while the title still reads "Authorization Bypass" or "Arbitrary Code Execution" leaves the two contradicting each other, and the title is what appears in listings, Dependabot alerts and downstream mirrors. Rewrite it to describe the defect.
-- `severity` / `cvss_vector_string` — the API accepts one or the other, not both: send a vector (severity is computed from it) **or** `severity` with `cvss_vector_string: null`. On a hardening-bug or not-a-defect verdict send both as `null`. A field left out of the payload keeps its old value, so an old vector left in place keeps **driving the displayed severity**. Send `severity` alone only when the formula over-scores the shape you measured (impact confined to the developer's own throwaway environment, for instance); then state the vector you computed and why you are not publishing it, in both the report back and the reply, so the advisory and your own worksheet do not contradict each other. Never use it to quietly publish a number below what the worksheet computes.
+- `severity` / `cvss_vector_string` — the API accepts one or the other, not both. On a vulnerability or already-fixed verdict, send the worksheet's vector and let it compute the severity; when a narrow shape is hard to express in 3.1, use a CVSS 4.0 vector (`AT:P`, `UI:P` / `UI:A`), which GitHub accepts. Never publish a hand-picked `severity` in place of the vector you computed. On a hardening-bug or not-a-defect verdict send both as `null`. A field left out of the payload keeps its old value, so an old vector left in place keeps **driving the displayed severity**.
 - `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so (e.g. CWE-20)
 - `vulnerable_version_range` and `patched_versions` — do not promise a patched version for a fix that has not landed; re-check the merge state rather than assuming
 - the description — rewrite it to **stand alone**. It is published to people who never saw the report, so it states the defect, the real preconditions, and what the attacker does and does not control. Corrections to the reporter's claims go in the reply, not here. A description carrying "the impact is smaller than reported" or "what the report missed" reads as half of a conversation the reader cannot see, and it is the most common thing to get wrong at this step. Grep your draft for "report" before sending it.
@@ -203,7 +209,7 @@ Close with:
 
 - **Verdict** — one of the four, per advisory (and per cluster on a bulk drop)
 - **What was verified** — the literal reproduction output, and which claims held versus failed
-- **Honest severity** — the step-8 worksheet, the CVE recommendation, which earlier advisory's ruling it follows or departs from (step 1), and, when the published severity is not the worksheet's vector, that vector and why
+- **Honest severity** — the step-8 worksheet, the CVE recommendation, and which earlier advisory's ruling it follows or departs from (step 1)
 - **Anything the report missed** — extra defects, root-cause clusters, and any cross-report chain
 - **Advisory fields changed** — before and after, confirmed by re-fetching
 - **The drafted reply(ies)** — in the step-12 delivery format, with any no-change-needed ones flagged
