@@ -183,7 +183,7 @@ Partial updates are the standard failure. Walk the whole list:
 gh api --method PATCH /repos/{owner}/{repo}/security-advisories/{ghsa-id} --input payload.json
 ```
 
-Verify by re-fetching. Do not trust the PATCH response you did not read.
+Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities` shows only the vector you sent (`cvss_v3` null when you sent a 4.0 vector, and vice versa); if the reporter's other-version vector survived, tell the user rather than leaving two vectors that disagree.
 
 **Gotchas worth knowing before you start:**
 
