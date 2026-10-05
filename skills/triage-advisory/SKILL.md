@@ -19,7 +19,7 @@ Every advisory ends in exactly one of these. Steps 1–8 decide which; steps 9�
 | **Vulnerability** | Untrusted party reaches the defect through a documented surface and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships (for `low`, see the publish-or-release gotcha in step 11) | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
 | **Already fixed** | Passes the step-8 gate on the affected version, but a released version no longer has it | Keep, set `patched_versions` to that release; publish vs close: step-11 gotcha | Same as above | None, unless a supported older line needs a backport | Point to the release |
 | **Hardening bug** | Real defect, but it is reachable only internally, no untrusted party can set it, its effect is inert, or it is outside the tool's threat model | `state: closed` | No | Yes, as ordinary correctness in a normal release | State the strongest failed gate (step 8) with its evidence; thank them for the bug |
-| **Not a defect** | Nothing worth changing: the code behaves as intended or documented, the effect is inert and the code needs no change, or the scenario is outside the threat model with nothing to change | `state: closed` | No | No | Explain what actually happens and why |
+| **Not a defect** | Nothing worth changing: the code behaves as intended or documented, the effect is inert and the code needs no change, or the scenario is outside the threat model with nothing to change | `state: closed` | No | No | Explain what actually happens and why; for the threat-model case, state the gate-4 argument |
 
 The severity enum has no "not a vulnerability" value, so the hardening-bug and not-a-defect verdicts close with both `severity` and `cvss_vector_string` set to `null` rather than carry a `low`.
 
@@ -109,7 +109,7 @@ All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a 
 
 Conceding it costs nothing; denying it costs the whole argument.
 
-Whatever the verdict, answer the remaining gates too and fill in the worksheet at the end of this step. The first "no" fixes the verdict; the reply leads with the strongest failed gate (gate 4 when it also fails). On a closed verdict the worksheet is still the axis-by-axis rebuttal the reply needs.
+Whatever the verdict, answer the remaining gates too and fill in the worksheet at the end of this step. The first "no" fixes the verdict; the reply leads with the strongest failed gate (gate 4 when it also fails; gate 3 over gate 1 when the effect is inert, since "internal method" is the weaker line). On a closed verdict the worksheet is still the axis-by-axis rebuttal the reply needs.
 
 ### Gate 1: documented surface
 
