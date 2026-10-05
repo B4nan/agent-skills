@@ -18,8 +18,8 @@ Every advisory ends in exactly one of these. Steps 1–8 decide which; steps 9�
 |---|---|---|---|---|---|
 | **Vulnerability** | Untrusted party reaches the defect through a documented surface and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships (for `low`, see the publish-or-release gotcha in step 11) | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
 | **Already fixed** | Passes the step-8 gate on the affected version, but a released version no longer has it | Keep, set `patched_versions` to that release; publish vs close: step-11 gotcha | Same as above | None, unless a supported older line needs a backport | Point to the release |
-| **Hardening bug** | Real defect, but it is reachable only internally, no untrusted party can set it, its effect is inert, or it is outside the tool's threat model | `state: closed` | No | Yes, as ordinary correctness in a normal release | State the gate that failed (surface, who sets it, inert effect, threat model) with its evidence; thank them for the bug |
-| **Not a defect** | Nothing worth changing: the code behaves as intended or documented, or the effect is inert and the code needs no change | `state: closed` | No | No | Explain what actually happens and why |
+| **Hardening bug** | Real defect, but it is reachable only internally, no untrusted party can set it, its effect is inert, or it is outside the tool's threat model | `state: closed` | No | Yes, as ordinary correctness in a normal release | State the strongest failed gate (step 8) with its evidence; thank them for the bug |
+| **Not a defect** | Nothing worth changing: the code behaves as intended or documented, the effect is inert and the code needs no change, or the scenario is outside the threat model with nothing to change | `state: closed` | No | No | Explain what actually happens and why |
 
 The severity enum has no "not a vulnerability" value, so the hardening-bug and not-a-defect verdicts close with both `severity` and `cvss_vector_string` set to `null` rather than carry a `low`.
 
@@ -80,7 +80,7 @@ Enumerate exhaustively where the tainted value can come from: config keys, envir
 
 This is what turns a "High — arbitrary code execution" into not a vulnerability: when the only supplier of the input is the developer running a command on their own machine, no privilege boundary is crossed (gate 2 in step 8).
 
-Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project, only when the parameter is documented as taking code or trusted input; otherwise gate 1's pass-through test (step 8) decides. Say which; it is the reporter's most likely comeback.
+Watch for the public-API caveat: if the parameter is documented as taking code or trusted input, a downstream application passing untrusted data into it is that application's misuse, not an exposure in your project; for any other parameter, gate 1's pass-through test (step 8) decides. Say which; it is the reporter's most likely comeback.
 
 ## 7. Bulk drops: group by root cause, then look for chains
 
@@ -135,7 +135,7 @@ The verdict turns on **effect**, not on how exotic the shape looks. When the eff
 
 ### The worksheet
 
-Fill this in for every advisory. It feeds the field table in step 11 and the reply in step 12, so write it once and reuse it. Use one row per base metric of the reporter's vector: AV, AC, PR, UI, S, C, I, A for CVSS 3.1; AV, AC, AT, PR, UI, VC, VI, VA, SC, SI, SA for CVSS 4.0.
+Fill this in for every advisory. It feeds the field table in step 11 and the reply in step 12, so write it once and reuse it. Use one row per base metric of the reporter's vector: AV, AC, PR, UI, S, C, I, A for CVSS 3.1; AV, AC, AT, PR, UI, VC, VI, VA, SC, SI, SA for CVSS 4.0. When you publish a different CVSS version than the reporter used, add rows for the metrics only one version has, with `—` in the column that lacks them.
 
 | Axis | Reporter | Ours | Evidence |
 |---|---|---|---|
@@ -185,7 +185,7 @@ Partial updates are the standard failure. Walk the whole list:
 gh api --method PATCH /repos/{owner}/{repo}/security-advisories/{ghsa-id} --input payload.json
 ```
 
-Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities` shows only the vector you sent (`cvss_v3` null when you sent a 4.0 vector, and vice versa); if the reporter's other-version vector survived, tell the user rather than leaving two vectors that disagree. On a closed verdict, confirm `severity` and both `cvss_severities` entries are `null`; if the combined payload is rejected or ignored, send `cvss_vector_string: null` and `severity: null` as separate PATCHes and report which stuck.
+Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities` shows only the vector you sent (`cvss_v3` null when you sent a 4.0 vector, and vice versa); if the reporter's other-version vector survived, PATCH `cvss_vector_string: null`, re-fetch to confirm both entries are null, PATCH the worksheet vector again, and report which steps stuck. On a closed verdict, confirm `severity` and both `cvss_severities` entries are `null`; if the combined payload is rejected or ignored, send `cvss_vector_string: null` and `severity: null` as separate PATCHes and report which stuck.
 
 **Gotchas worth knowing before you start:**
 
