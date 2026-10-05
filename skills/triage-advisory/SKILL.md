@@ -185,7 +185,7 @@ Partial updates are the standard failure. Walk the whole list:
 gh api --method PATCH /repos/{owner}/{repo}/security-advisories/{ghsa-id} --input payload.json
 ```
 
-Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities` shows only the vector you sent (`cvss_v3` null when you sent a 4.0 vector, and vice versa); if the reporter's other-version vector survived, PATCH `cvss_vector_string: null`, re-fetch to confirm both entries are null, PATCH the worksheet vector again, and report which steps stuck. On a closed verdict, confirm `severity` and both `cvss_severities` entries are `null`; if the combined payload is rejected or ignored, send `cvss_vector_string: null` and `severity: null` as separate PATCHes and report which stuck.
+Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities.cvss_v3.vector_string` and `cvss_severities.cvss_v4.vector_string` show only the vector you sent (the other is `null`; the API returns an absent vector as an object with null members, never a null entry); if the reporter's other-version vector survived, PATCH `cvss_vector_string: null`, re-fetch to confirm both `vector_string`s are null, PATCH the worksheet vector again, and report which steps stuck. On a closed verdict, confirm `severity` and both `vector_string`s are `null`; if the combined payload is rejected or ignored, send `cvss_vector_string: null` and `severity: null` as separate PATCHes and report which stuck.
 
 **Gotchas worth knowing before you start:**
 
