@@ -16,7 +16,7 @@ Every advisory ends in exactly one of these. Steps 1–8 decide which; steps 9�
 
 | Verdict | When | Advisory | CVE | Fix | Reply |
 |---|---|---|---|---|---|
-| **Vulnerability** | Untrusted party reaches the defect through a documented surface and the effect is real (step 8 gate passes) | Keep, correct every field (step 11), publish once the fix ships (for `low`, see the publish-or-release gotcha in step 11) | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
+| **Vulnerability** | Untrusted party reaches the defect through a documented surface and the effect is real (step 8 gate passes, or its gate-4 exception applies) | Keep, correct every field (step 11), publish once the fix ships (for `low`, see the publish-or-release gotcha in step 11) | Consider (step 9) | Yes; decide private fork vs public first | Concede what holds, correct the vector axis by axis |
 | **Already fixed** | Passes the step-8 gate on the affected version, but a released version no longer has it | Keep, set `patched_versions` to that release; publish vs close: step-11 gotcha | Same as above | None, unless a supported older line needs a backport | Point to the release; correct the vector axis by axis as for a vulnerability |
 | **Hardening bug** | Real defect, but it is reachable only internally, no untrusted party can set it, its effect is inert, or it is outside the tool's threat model (except the step-8 exception) | `state: closed` | No | Yes, as ordinary correctness in a normal release | State the strongest failed gate (step 8) with its evidence; thank them for the bug |
 | **Not a defect** | Nothing worth changing: the code behaves as intended or documented, the effect is inert and the code needs no change, or the scenario is outside the threat model with nothing to change | `state: closed` | No | No | Explain what actually happens and why; for the threat-model case, state the gate-4 argument |
@@ -106,6 +106,7 @@ All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a 
 - no axis in either version for the deployment precondition: both 3.1 and 4.0 score as if the vulnerable configuration is present (`AT:P` is only for obstacles the attacker must overcome, a race or an on-path position), so state the precondition in the description (step 11), not the vector
 - `UI:R` in 3.1; in 4.0, `UI:P` when the developer's action is routine (running the generator), `UI:A` only when they must do something specific
 - `PR` as measured in step 5
+- `S:U` in 3.1 and `SC:N/SI:N/SA:N` in 4.0 unless the executed code escapes the authority the tool already runs under (a sandbox, a separate service account): the attacker's foothold on the data source is `PR`, not a scope change
 
 Conceding it costs nothing; denying it costs the whole argument.
 
@@ -148,7 +149,7 @@ Recurring inflation patterns:
 - `PR:L` where the attack actually requires a role, permission, or ownership the attacker would not normally hold
 - `AC` or `AT` used to encode a deployment precondition (neither version scores it; assume the configuration) or a required developer action such as pointing a dev-time CLI at hostile input (that belongs on `UI`); keep `AC:H` for genuine attacker-side effort such as recovering a secret or defeating a mitigation, and a race as `AC:H` in 3.1 but `AT:P` in 4.0
 - `UI:N` where a human has to run something for the payload to fire
-- `S:C` (or non-zero subsequent-system impact in 4.0) where no privilege domain is actually crossed
+- `S:C` (or non-zero subsequent-system impact in 4.0) where no privilege domain is actually crossed (the attacker's own starting position is `PR`, not a crossed domain)
 - `C:H` beside `I:N/A:N` (`VC`/`VI`/`VA` in 4.0) when the same defect also destroys or corrupts data. Impact zeroed on the axes that are genuinely worse is a strong sign the vector was fitted to the write-up rather than measured — say so.
 - severity anchored to a narrative ("the third library in a row with this bug class") rather than to the artifact
 
@@ -175,7 +176,7 @@ If a project skill for fixing bugs exists (`/fix`, or `/polish` for finishing a 
 Partial updates are the standard failure. Walk the whole list:
 
 - `summary` — **the one everyone forgets.** Lowering severity while the title still reads "Authorization Bypass" or "Arbitrary Code Execution" leaves the two contradicting each other, and the title is what appears in listings, Dependabot alerts and downstream mirrors. Rewrite it to describe the defect.
-- `severity` / `cvss_vector_string` — the API accepts one or the other, not both. On a vulnerability or already-fixed verdict, send the worksheet's vector and let it compute the severity; when the required interaction is hard to express in 3.1, use a CVSS 4.0 vector (`UI:P` / `UI:A`; `AT:P` only for a race or on-path condition), which GitHub accepts. Never publish a hand-picked `severity` in place of the vector you computed. On a hardening-bug or not-a-defect verdict send both as `null`. A field left out of the payload keeps its old value, so an old vector left in place keeps **driving the displayed severity**.
+- `severity` / `cvss_vector_string` — the API accepts one or the other, not both. On a vulnerability or already-fixed verdict, send the worksheet's vector and let it compute the severity; when the required interaction is hard to express in 3.1, use a CVSS 4.0 vector (`UI:P` / `UI:A`), which GitHub accepts. Never publish a hand-picked `severity` in place of the vector you computed. On a hardening-bug or not-a-defect verdict send both as `null`. A field left out of the payload keeps its old value, so an old vector left in place keeps **driving the displayed severity**.
 - `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so (e.g. CWE-116 for missing output escaping, CWE-1286 for a missing syntactic check)
 - `vulnerable_version_range` and `patched_versions` — do not promise a patched version for a fix that has not landed; re-check the merge state rather than assuming
 - the description — rewrite it to **stand alone**. It is published to people who never saw the report, so it states the defect, the real preconditions, and what the attacker does and does not control. Corrections to the reporter's claims go in the reply, not here. A description carrying "the impact is smaller than reported" or "what the report missed" reads as half of a conversation the reader cannot see, and it is the most common thing to get wrong at this step. Grep your draft for "report" before sending it.
