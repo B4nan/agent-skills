@@ -103,7 +103,7 @@ Answer these in order. The first "no" ends the vulnerability question: the verdi
 
 All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a released version no longer has it. One exception to "first no ends it", at gate 4 only: when gate 1 passed through a data source and an untrusted party's write becomes code execution on a developer machine or CI runner, the verdict is **vulnerability** even though the tool is dev-time only. Record the narrow preconditions in the worksheet, not as a dismissal:
 
-- `AC:H`, or `AT:P` in 4.0, for the deployment precondition
+- `AT:P` (4.0) for the deployment precondition; 3.1 has no axis for it and scores as if the configuration is present, so use 4.0 when the precondition is what narrows the score
 - `UI:R` in 3.1; in 4.0, `UI:P` when the developer's action is routine (running the generator), `UI:A` only when they must do something specific
 - `PR` as measured in step 5
 
@@ -146,7 +146,7 @@ If the reporter set only a severity label, fill every 3.1 base metric anyway (4.
 Recurring inflation patterns:
 
 - `PR:L` where the attack actually requires a role, permission, or ownership the attacker would not normally hold
-- `AC:L` where it requires a developer to point a dev-time CLI at hostile input
+- `AC` used to encode a deployment precondition or a required developer action (pointing a dev-time CLI at hostile input), which belong on `AT` and `UI`; keep `AC:H` for genuine attacker-side conditions such as winning a race or recovering a secret
 - `UI:N` where a human has to run something for the payload to fire
 - `S:C` (or non-zero subsequent-system impact in 4.0) where no privilege domain is actually crossed
 - `AT:N` (4.0) where the attack depends on a deployment precondition the reporter assumes
@@ -177,7 +177,7 @@ Partial updates are the standard failure. Walk the whole list:
 
 - `summary` — **the one everyone forgets.** Lowering severity while the title still reads "Authorization Bypass" or "Arbitrary Code Execution" leaves the two contradicting each other, and the title is what appears in listings, Dependabot alerts and downstream mirrors. Rewrite it to describe the defect.
 - `severity` / `cvss_vector_string` — the API accepts one or the other, not both. On a vulnerability or already-fixed verdict, send the worksheet's vector and let it compute the severity; when a narrow shape is hard to express in 3.1, use a CVSS 4.0 vector (`AT:P`, `UI:P` / `UI:A`), which GitHub accepts. Never publish a hand-picked `severity` in place of the vector you computed. On a hardening-bug or not-a-defect verdict send both as `null`. A field left out of the payload keeps its old value, so an old vector left in place keeps **driving the displayed severity**.
-- `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so (e.g. CWE-1286)
+- `cwe_ids` — reclassify when the framing changed: a report filed as an authorization or injection weakness is often, on inspection, a plain logic or input-handling error, and the CWE should say so (e.g. CWE-116 for missing output escaping, CWE-1286 for a missing syntactic check)
 - `vulnerable_version_range` and `patched_versions` — do not promise a patched version for a fix that has not landed; re-check the merge state rather than assuming
 - the description — rewrite it to **stand alone**. It is published to people who never saw the report, so it states the defect, the real preconditions, and what the attacker does and does not control. Corrections to the reporter's claims go in the reply, not here. A description carrying "the impact is smaller than reported" or "what the report missed" reads as half of a conversation the reader cannot see, and it is the most common thing to get wrong at this step. Grep your draft for "report" before sending it.
 
