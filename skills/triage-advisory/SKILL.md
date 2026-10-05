@@ -101,7 +101,7 @@ Answer these in order. The first "no" ends the vulnerability question: the verdi
 3. **Real effect**: is the outcome consequential (shared state corrupted, a real authorization or filter bypass the documented API does not already grant, code execution), rather than inert (a throwaway object, a catchable error on malformed input)?
 4. **Threat model**: is the scenario inside what the tool ever claimed to defend?
 
-All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a released version no longer has it. One exception to "first no ends it", at gate 4 only: when gate 1 passed through a data source and an untrusted party's write becomes code execution on a developer machine or CI runner, the verdict is **vulnerability** even though the tool is dev-time only. Record the narrow preconditions in the worksheet (e.g. `AC:H`, or `AT:P` in 4.0, `UI:R`, `PR` as measured), not as a dismissal. Conceding it costs nothing; denying it costs the whole argument.
+All four "yes" → **vulnerability**, or **already fixed** when step 2 showed a released version no longer has it. One exception to "first no ends it", at gate 4 only: when gate 1 passed through a data source and an untrusted party's write becomes code execution on a developer machine or CI runner, the verdict is **vulnerability** even though the tool is dev-time only. Record the narrow preconditions in the worksheet (e.g. `AC:H`, or `AT:P` in 4.0, `UI:R` (`UI:A` in 4.0), `PR` as measured), not as a dismissal. Conceding it costs nothing; denying it costs the whole argument.
 
 Whatever the verdict, fill in the worksheet at the end of this step: on a closed verdict it is still the axis-by-axis rebuttal the reply needs.
 
@@ -123,9 +123,7 @@ The verdict turns on **effect**, not on how exotic the shape looks. When the eff
 
 ### Gate 4: threat model
 
-The question: **is the scenario inside what the tool ever claimed to defend?** Plenty of tooling is designed to execute, generate, or trust its input — build scripts, code generators, plugin loaders, anything that runs on a developer machine or in CI. Feeding such a tool *code or configuration it is declared to execute* that an untrusted party controls is outside its threat model however severe the payload gets; `npm install` against a hostile lockfile is the familiar version. When the input is declared data (gate 1) and the write becomes code execution, the exception under the gate applies: the verdict is **vulnerability**.
-
-Prefer this argument: unlike a privilege-based one (step 5), a reporter cannot falsify it with a terminal.
+**Is the scenario inside what the tool ever claimed to defend?** Tooling built to execute, generate, or trust its input (build scripts, code generators, plugin loaders) does not defend against hostile *code or configuration it is declared to execute*, however severe the payload — `npm install` against a hostile lockfile is the familiar version; declared data falls under gate 1 and the exception above. Prefer this argument: unlike a privilege-based one (step 5), a reporter cannot falsify it with a terminal.
 
 ### The worksheet
 
@@ -203,7 +201,7 @@ Close with:
 
 - **Verdict** — one of the four, per advisory (and per cluster on a bulk drop)
 - **What was verified** — the literal reproduction output, and which claims held versus failed
-- **Honest severity** — the step-8 worksheet, the CVE recommendation, and which earlier advisory's ruling it follows or departs from (step 1)
+- **Honest severity** — the step-8 worksheet, the CVE recommendation, which earlier advisory's ruling it follows or departs from (step 1), and, when the published severity is not the worksheet's vector, that vector and why
 - **Anything the report missed** — extra defects, root-cause clusters, and any cross-report chain
 - **Advisory fields changed** — before and after, confirmed by re-fetching
 - **The drafted reply(ies)** — in the step-12 delivery format, with any no-change-needed ones flagged
