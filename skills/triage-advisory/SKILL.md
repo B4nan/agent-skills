@@ -25,7 +25,7 @@ The severity enum has no "not a vulnerability" value, so the hardening-bug and n
 
 ## Bug-class references
 
-Specifics for common report classes live in `references/`. Read the matching file before step 3: it lists what to check while reading the function, how to tell inert from consequential (step 8), and what the narrowest fix looks like (step 10).
+Specifics for common report classes live in `references/`. Read the matching file before step 2: it lists how to reproduce and probe the class, what to check while reading the function (step 3), how to tell inert from consequential (step 8), and what the narrowest fix looks like (step 10).
 
 - `references/prototype-pollution.md`: `__proto__` / `constructor` keys, unsafe merges and copies
 - `references/code-generation.md`: escaping and injection into generated source
@@ -38,7 +38,7 @@ Specifics for common report classes live in `references/`. Read the matching fil
 gh api /repos/{owner}/{repo}/security-advisories/{ghsa-id}
 ```
 
-Note `severity`, both `cvss_severities.{cvss_v3,cvss_v4}.vector_string` and the legacy `cvss.vector_string` (deprecated but still returned; the reporter may have filed either version), `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number.
+Note `severity`, both `cvss_severities.{cvss_v3,cvss_v4}.vector_string` and the legacy `cvss.vector_string` (a duplicate of `cvss_v3`; the reporter may have filed either version), `cwes`, `state`, `credits`, and `vulnerabilities[].{package, vulnerable_version_range, patched_versions}` alongside the description. Keep the reporter's original vector — you will be arguing with it specifically, axis by axis, and that is far more persuasive than asserting a different number. If they set only a severity label and no vector, note that; the step-8 worksheet then builds the vector from scratch.
 
 Then list every advisory on the repo (`gh api --paginate /repos/{owner}/{repo}/security-advisories`), closed and published included. If you or a co-maintainer already ruled on the same bug class, reuse that verdict and its reasoning, or say explicitly why this one differs. Inconsistent rulings across advisories are the first thing a persistent reporter will quote back.
 
@@ -80,7 +80,7 @@ Enumerate exhaustively where the tainted value can come from: config keys, envir
 
 This is what turns a "High — arbitrary code execution" into not a vulnerability: when the only supplier of the input is the developer running a command on their own machine, no privilege boundary is crossed (gate 2 in step 8).
 
-Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project, unless gate 1's pass-through test (step 8) says otherwise. Say which; it is the reporter's most likely comeback.
+Watch for the public-API caveat: if a library function *could* be called with untrusted input by a downstream application, that is a misuse contract for that application, not an exposure in your project, only when the parameter is documented as taking code or trusted input; otherwise gate 1's pass-through test (step 8) decides. Say which; it is the reporter's most likely comeback.
 
 ## 7. Bulk drops: group by root cause, then look for chains
 
@@ -141,6 +141,8 @@ Fill this in for every advisory. It feeds the field table in step 11 and the rep
 |---|---|---|---|
 | PR | L | H | step 5: a single-permission account was denied … |
 
+If the reporter set only a severity label, fill every 3.1 base metric anyway (4.0 when the shape needs it) with `—` in the Reporter column. Ours is still the vector you publish, and the reply argues against the label on the same axes.
+
 Recurring inflation patterns:
 
 - `PR:L` where the attack actually requires a role, permission, or ownership the attacker would not normally hold
@@ -183,7 +185,7 @@ Partial updates are the standard failure. Walk the whole list:
 gh api --method PATCH /repos/{owner}/{repo}/security-advisories/{ghsa-id} --input payload.json
 ```
 
-Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities` shows only the vector you sent (`cvss_v3` null when you sent a 4.0 vector, and vice versa); if the reporter's other-version vector survived, tell the user rather than leaving two vectors that disagree.
+Verify by re-fetching. Do not trust the PATCH response you did not read. Confirm `cvss_severities` shows only the vector you sent (`cvss_v3` null when you sent a 4.0 vector, and vice versa); if the reporter's other-version vector survived, tell the user rather than leaving two vectors that disagree. On a closed verdict, confirm `severity` and both `cvss_severities` entries are `null`; if the combined payload is rejected or ignored, send `cvss_vector_string: null` and `severity: null` as separate PATCHes and report which stuck.
 
 **Gotchas worth knowing before you start:**
 
