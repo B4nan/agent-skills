@@ -4,7 +4,7 @@ Agent skills I use day to day while maintaining [MikroORM](https://github.com/mi
 
 | Skill | What it does |
 |-------|--------------|
-| [`staff-review`](skills/staff-review/SKILL.md) | Deep review of a PR or branch diff. Verifies every finding, re-evaluates severity, and with `apply` fixes everything worth fixing. Runs in a forked context. |
+| [`staff-review`](skills/staff-review/SKILL.md) | Deep review of a PR or branch diff. Verifies every finding (behavioral ones with a failing test it includes in the report), re-evaluates severity, and with `apply` fixes everything worth fixing. Runs in a forked context. |
 | [`staff-review-loop`](skills/staff-review-loop/SKILL.md) | Runs `staff-review apply` repeatedly until the review comes back clean, stops converging, or hits the iteration cap (default 5). |
 | [`staff-review-inline`](skills/staff-review-inline/SKILL.md) | Runs `staff-review` and relays its report as plain text, for UIs that don't show forked-skill output (e.g. the Claude desktop app). |
 | [`fix`](skills/fix/SKILL.md) | Fixes a bug from an issue number, URL, or description: validates the report, writes a failing test first, applies a surgical fix, self-reviews, and opens a PR. |
