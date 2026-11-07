@@ -1,6 +1,6 @@
 ---
 name: staff-review
-description: Staff Engineer Code Review — deep review of PRs or branch diffs with verified findings. Re-evaluates severity after verification, and (with `apply`) auto-applies surgical fixes for every finding that is a real improvement — including low/nit — skipping only fixes that are unnecessary or too complex for their severity. Use when you want a thorough code review that checks correctness, types, performance, edge cases, test coverage, and simplification opportunities (dead code, over-abstraction, redundancy, defensive checks for impossible cases, comment noise).
+description: Staff Engineer Code Review — deep review of PRs or branch diffs with verified findings. Re-evaluates severity after verification, and (with `apply`) auto-applies surgical fixes for every finding that is a real improvement — including low/nit — skipping only fixes that are unnecessary or too complex for their severity, then reviews again after any medium-or-worse fix. Use when you want a thorough code review that checks correctness, types, performance, edge cases, test coverage, and simplification opportunities (dead code, over-abstraction, redundancy, defensive checks for impossible cases, comment noise).
 argument-hint: "[pr-number-or-url] [apply] [full]"
 context: fork
 ---
@@ -18,11 +18,11 @@ There is no live user reading along. Nothing you write mid-review reaches anyone
 Consequences, non-negotiable:
 
 - **Your first action must be a tool call, not text.** Every step before the report is research or edits; none of them are things you "show" anyone. Do not open with a preamble.
-- **Never end your turn before the report exists.** The only acceptable last message is the finished deliverable of step 6 (plus step 7's apply summary). If you are about to end a turn and have not written the report, you are destroying the run — make the next tool call instead.
+- **Never end your turn before the report exists.** The only acceptable last message is the finished deliverable of step 6 (plus step 7's apply summary and any step 8 re-review passes). If you are about to end a turn and have not written the report, you are destroying the run — make the next tool call instead.
 - **Never launch subagents in the background.** Every `Agent` call must pass `run_in_background: false`. For parallel verification, batch multiple synchronous `Agent` calls into a SINGLE message — they still run concurrently, and your turn blocks until all of them return.
 - **Never use the Workflow tool** here (it always runs in the background).
 - **Never end your turn "waiting" for anything.** Phrases like "I'll compile the report once the agents return" must never be your last words — if you have nothing left to do but wait, you launched something in the background by mistake; the work is already lost.
-- Your final message must be the complete deliverable: the full report, and (when `apply=true`) the applied-fixes summary and validation results.
+- Your final message must be the complete deliverable: the full report, and (when `apply=true`) the applied-fixes summary, validation results, and every re-review pass from step 8.
 
 ### 1. Parse invocation arguments
 
@@ -150,3 +150,11 @@ Branch on the `apply=` value you committed to at step 1 — do not re-derive it 
 
   Report which findings were applied, which were skipped (with the specific reason — unnecessary or too complex), and any test/build failures.
 - **`apply=false`**: ask the user whether to implement fixes. When the review target is a PR, also offer to open a pending GitHub review with inline comments for the findings worth addressing, each carrying its repro; the user submits it themselves. **If they later reply with a fix request** (e.g. "fix 1", "apply #3 and #5", "yes do it") — even several turns later — treat that as `apply=true` from this point on, and **re-run the branch confirmation above before editing**. The step 2 branch context does not survive multi-turn deferred-apply by default; you must re-detect.
+
+### 8. Re-review after medium+ fixes (`apply=true` only)
+
+A fix for a `medium` or worse finding is new code nobody has reviewed, and it is the kind of fix most likely to bring a bug of its own. So when a pass applied at least one finding whose **final** severity is `medium`, `high` or `critical`, run another pass: repeat steps 2–7 on the updated tree. Review the whole diff again, not just your fixes, since a fix can break code it didn't touch.
+
+- Carry forward what earlier passes settled: don't re-report findings already applied, and keep skipped ones skipped unless a fix changed the code they're about.
+- Stop when a pass applies no `medium`+ fix, when validation fails in a way you can't resolve, or after 3 passes in total. If the cap is hit right after a `medium`+ fix, say in the report that this fix was not re-reviewed.
+- Write nothing between passes (step 0). The final message carries the step 6 header once, then each pass's findings table and apply summary under `Pass 1`, `Pass 2`, ….
