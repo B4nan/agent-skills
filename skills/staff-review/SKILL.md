@@ -43,7 +43,6 @@ Tokenize the args by whitespace and apply these rules independently:
 - **full flag** — set `full=true` if any token equals the word "full" (case-insensitive, exact match). This forces the widest validation ring in step 7. Otherwise `full=false`, and validation scope is decided by the rules there.
 - **PR reference** — set `pr=#<number>` if any token is either a bare positive integer or a `github.com/.../pull/<number>` URL. Otherwise `pr=none`.
 - **working directory** — set `dir=<path>` if any token matches `worktree=<path>` or `cwd=<path>`. This is where the code under review lives (typically a git worktree that the forked context's cwd does NOT point at). When set, `cd <path>` **before any git / gh / build / edit command** and treat it as the repo root for the entire review, including step 7. Otherwise `dir=cwd` (the current directory).
-- **prior rounds** — set `prior=<path>` if any token matches `prior=<path>`. The file is written by `/staff-review-loop` and holds what earlier rounds of the same review already found (applied and skipped, with severity) and the diff their fixes produced. When set, this run is a **follow-up round**, see step 2. Otherwise `prior=none`.
 
 Once parsed, these values are a commitment, not a draft. If `apply=true`, step 7 is fixed: you will apply fixes without asking. Do not re-litigate this at the end of the review. If the args contain the word "apply" as a standalone token but you concluded `apply=false`, you have made a parsing error — re-parse before continuing.
 
@@ -64,12 +63,6 @@ Pick the review target by the **first** rule that matches, then `cd` into it bef
 **Reading a *local tree*:** `git diff <base>...HEAD` (with `<base>` = the PR base or `origin/HEAD`), plus `git diff` and `git diff --cached` for uncommitted work; mention uncommitted changes explicitly in the report. Pull open-PR metadata (`gh pr view --json number,url,title`) for context when a PR exists.
 
 If you're unsure which rule applies, run the detection commands before fetching anything.
-
-**Follow-up round (`prior` set).** Read the file before anything else. Earlier rounds already reviewed the branch diff, so do not start over:
-
-- Review the **fix diff recorded in the file**: the code the earlier fixes added or changed, plus the existing code those changes interact with (callers, siblings, the tests they touched). You still read the branch diff for context, but the unchanged parts of it are not up for a fresh pass.
-- Do not report a finding the file lists as applied. Keep a skipped one skipped, unless a fix changed the code it is about.
-- A finding is new only if it is about the fixes or something they broke. If there is none, say so and report a clean round.
 
 ### 3. Identify potential issues
 

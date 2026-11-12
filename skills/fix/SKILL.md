@@ -69,9 +69,7 @@ Before declaring done, critically review your diff:
 
 Then get an external review of the changes:
 
-1. Run `/staff-review-loop 3 medium` (`/b4nan:staff-review-loop 3 medium` when installed from the plugin). It runs `/staff-review apply`, which auto-applies surgical fixes for every verified finding that is a real improvement, regardless of severity, skipping only those whose fix is unnecessary or disproportionately complex, and repeats it only after a pass that applied a `medium` or worse fix, up to 3 passes in total. Do not run `/staff-review` yourself and then re-implement the fixing — that duplicates the skill's own apply branch. After it returns, re-run the relevant tests on whatever it touched. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
-
-The review happens here, in the foreground, before anything is committed or pushed. Never open the PR first and review afterwards, and never leave a review running in the background when you report: the PR you hand over is the finished one, and the user may merge it the moment they see it.
+1. Run `/staff-review apply` (`/b4nan:staff-review apply` when installed from the plugin). The `apply` token tells the skill to auto-apply surgical fixes for every verified finding that is a real improvement, regardless of severity, skipping only those whose fix is unnecessary or disproportionately complex. Do not run `/staff-review` without `apply` here and then re-implement the fixing yourself — that duplicates the skill's own apply branch. After it returns, re-run the relevant tests on whatever it touched. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
 
 Only proceed to commit once the review is clean (or remaining findings are explicitly low-severity).
 
@@ -85,8 +83,6 @@ Workflow:
 2. Commit on that branch using the project's git conventions. Use `fix(<scope>):` prefix. If the input was a GitHub issue, add `Closes #<number>` in the commit body.
 3. Push the branch (`git push -u origin <branch>`) — never push to `master`/`main`.
 4. Open a PR with `gh pr create` against the base branch.
-5. Before reporting, confirm nothing is left behind: every fix the review applied is committed and pushed, `git status --short` is empty, and `git log @{u}..HEAD` lists no unpushed commits. The PR must contain the whole fix, not the state from before the review.
-
-If anything has to be pushed after the PR exists (a late finding, CI fix), check `gh pr view --json state` first. A merged or closed PR gets a new branch off the updated base and a new PR; never push to its old branch. Give the same instruction to any subagent that may push.
+5. Before reporting, confirm the PR contains everything the review changed, including fixes from its re-review rounds: `git status --short` is empty and `git log @{u}..HEAD` lists no unpushed commits. If anything is left, commit and push it now.
 
 If you find yourself on `master`/`main` with the fix already committed locally, STOP — do not push. Move the commit to a new branch (`git branch <new-branch>` then `git reset --hard origin/master`) and push the branch instead. Ask the user before doing anything destructive to local state.

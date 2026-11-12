@@ -1,7 +1,7 @@
 ---
 name: staff-review-loop
-description: "Run /staff-review iteratively, fixing all actionable findings each pass. Usage: /staff-review-loop [max_iterations] [min_severity]"
-argument-hint: "[max iterations, default 5] [min severity for another pass: nit, low, medium, high or critical]"
+description: "Run /staff-review iteratively, fixing all actionable findings each pass. Usage: /staff-review-loop [max_iterations]"
+argument-hint: "[max iterations, default 5]"
 ---
 
 # Staff Review Loop
@@ -14,9 +14,8 @@ Iteratively run `/staff-review apply` until the review is clean, the cap is reac
 
 ## 1. Parse arguments
 
-- `$ARGUMENTS` may contain a positive integer — the maximum number of iterations. Default to **5** when absent or unparseable.
+- `$ARGUMENTS` may contain a single positive integer — the maximum number of iterations. Default to **5** when empty or unparseable.
 - Validate: must be an integer ≥ 1. If invalid, tell the user and stop.
-- `$ARGUMENTS` may also contain a severity (`nit`, `low`, `medium`, `high` or `critical`) — the **minimum severity** an applied finding must have for the loop to run another pass, e.g. `/staff-review-loop 3 medium`. Every verified finding is still applied whatever its severity; the threshold only decides whether the pass is followed by another one. Compare against the finding's **final** (post-verification) severity. Without it, any applied finding triggers another pass.
 
 Announce the cap to the user once before starting (e.g. `"Running staff-review loop, up to 5 iterations."`). Open a numbered list and pin the cap on the first line so it stays visible across long iterations:
 
@@ -48,27 +47,13 @@ worktree=<absolute-toplevel-path>[ <pr-number-if-any>]
 
 e.g. the full args become `apply worktree=/Users/me/proj/.claude/worktrees/feat-x 3851`.
 
-## 1.6. Carry earlier rounds forward
-
-Each `/staff-review` call runs in a fresh fork and knows nothing about the rounds before it. Left alone it reviews the whole branch from scratch and reports the same things again. So the loop keeps a **rounds file** and hands it to every round after the first.
-
-- Path: `"$(git rev-parse --absolute-git-dir)/staff-review-loop.md"` (inside the git dir, so it never shows up in the working tree). Delete any leftover file before iteration 1 and again when the loop exits.
-- Before each iteration, snapshot the tree, untracked files included, without touching the index or the working tree:
-
-  ```bash
-  snap() { GIT_INDEX_FILE="$(mktemp -u)" sh -c 'git read-tree HEAD && git add -A && git write-tree'; }
-  before=$(snap)
-  ```
-
-- After the iteration returns, append a section to the rounds file: `## Round <i>`, every finding of that round with its file:line, final severity and whether it was applied or skipped (with the skip reason), then the fix diff, `git diff "$before" "$(snap)"`, in a fenced block.
-
 ## 2. Loop
 
 Use an explicit counter `i`, starting at 1. **Before invoking iteration `i`, first check `i ≤ max_iterations`. If `i > max_iterations`, stop immediately with the cap-reached exit — do NOT invoke `/staff-review` again.** Treat the cap as a hard pre-condition on every iteration, not something to remember "at the end". The cap and the iteration counter must appear at the start of every iteration announcement (`"Iteration <i>/<max_iterations>:"`) so a one-line slip cannot lose track of where you are.
 
 ### 2a. Run the review with auto-apply
 
-Announce `"Iteration <i>/<max_iterations>:"` and invoke the `/staff-review apply` skill (named `b4nan:staff-review` when installed from the plugin) **with the §1.5 scope suffix appended to its args** (`apply worktree=<dir> <pr>`), so it reviews and edits the target tree rather than whatever the forked checkout happens to have open. From iteration 2 on, also append `prior=<rounds file>` (§1.6), which turns the call into a follow-up round: it reviews what the earlier fixes changed and does not report settled findings again. It will:
+Announce `"Iteration <i>/<max_iterations>:"` and invoke the `/staff-review apply` skill (named `b4nan:staff-review` when installed from the plugin) **with the §1.5 scope suffix appended to its args** (`apply worktree=<dir> <pr>`), so it reviews and edits the target tree rather than whatever the forked checkout happens to have open. It will:
 
 - Identify and verify findings.
 - Re-evaluate severity post-verification.
@@ -78,8 +63,6 @@ Announce `"Iteration <i>/<max_iterations>:"` and invoke the `/staff-review apply
 
 Capture the report: which findings were applied, which were skipped (with reason), and any test/build failures.
 
-Append the round to the rounds file (§1.6) right away, before relaying.
-
 **Then relay it before moving on:** re-emit the iteration's full report as assistant text (per the relay rule at the top — the tool result itself is invisible to the user in many UIs). Only after relaying do you evaluate 2b.
 
 ### 2b. Decide whether to continue — automatically, no user input
@@ -87,11 +70,10 @@ Append the round to the rounds file (§1.6) right away, before relaying.
 Evaluate in this order:
 
 1. **Zero applied findings this pass** → print `"Clean on iteration <i>. Stopping."` and break.
-2. **A minimum severity is set and no applied finding this pass reaches it** → print `"Nothing at <min_severity> or above applied on iteration <i>. Stopping."` and break. The fixes this pass applied stay; they just don't earn another pass.
-3. **Tests / build broke during the apply step** → print the failure and break. Do not iterate further.
-4. **No progress** (this iteration's applied set — same file:line + same issue — matches the previous iteration's) → print `"Stuck on iteration <i>: same findings as last pass. Stopping."` and break.
-5. **`i == max_iterations`** → print `"Cap reached on iteration <i>/<max_iterations>. Stopping."` and break. Do not invoke another `/staff-review`.
-6. **Otherwise** → increment `i` and re-enter step 2a immediately. Do **not** ask the user whether to continue.
+2. **Tests / build broke during the apply step** → print the failure and break. Do not iterate further.
+3. **No progress** (this iteration's applied set — same file:line + same issue — matches the previous iteration's) → print `"Stuck on iteration <i>: same findings as last pass. Stopping."` and break.
+4. **`i == max_iterations`** → print `"Cap reached on iteration <i>/<max_iterations>. Stopping."` and break. Do not invoke another `/staff-review`.
+5. **Otherwise** → increment `i` and re-enter step 2a immediately. Do **not** ask the user whether to continue.
 
 If the user interjects with a new instruction mid-loop, handle it, then resume the loop on the next iteration (or stop and report if the interjection redirects scope). Do not treat a normal interjection as implicit "stop the loop" — it just shifts what the next iteration sees.
 
@@ -99,7 +81,7 @@ If the user interjects with a new instruction mid-loop, handle it, then resume t
 
 The loop exits when **any** of these happen — report which one triggered the exit:
 
-1. **Clean review**: zero findings applied on the latest pass, or, with a minimum severity set, none at or above it.
+1. **Clean review**: zero findings applied on the latest pass.
 2. **Cap reached**: just completed iteration `max_iterations`. Stop **before** running an iteration past the cap, not after.
 3. **No progress**: same applied set two iterations in a row.
 4. **Fix failure**: tests / build broke and cannot be resolved.
