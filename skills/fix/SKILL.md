@@ -83,5 +83,6 @@ Workflow:
 2. Commit on that branch using the project's git conventions. Use `fix(<scope>):` prefix. If the input was a GitHub issue, add `Closes #<number>` in the commit body.
 3. Push the branch (`git push -u origin <branch>`) — never push to `master`/`main`.
 4. Open a PR with `gh pr create` against the base branch.
+5. Before reporting, confirm the PR contains everything the review changed, including fixes from its re-review rounds: `git status --short` is empty and `git log @{u}..HEAD` lists no unpushed commits. If anything is left, commit and push it now.
 
 If you find yourself on `master`/`main` with the fix already committed locally, STOP — do not push. Move the commit to a new branch (`git branch <new-branch>` then `git reset --hard origin/master`) and push the branch instead. Ask the user before doing anything destructive to local state.
