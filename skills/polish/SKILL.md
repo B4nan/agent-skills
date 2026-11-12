@@ -54,7 +54,7 @@ After the review applied any fixes, re-run the relevant checks (tests, type-chec
 
 - **Empty / no clear follow-up instruction**: stop here. The polish is done; the user is iterating and will commit on their own schedule. Print a short summary of what changed during the polish (files touched by staff-review, docs updated, etc.).
 - **Mentions commit only** (e.g. "commit", "and commit"): commit on the current branch using the project's git conventions — `feat:` for new functionality, `chore:` for non-functional changes, `fix:` only if the change is genuinely a bug fix. Do not push, do not open a PR.
-- **Mentions PR / push / ship** (e.g. "and open a pr", "ship it", "push and open pr", "open a draft pr"): first run `/staff-review-loop` until a pass applies nothing and re-run step 5 (the single pass from step 4 is not enough for a PR; never review after opening it or leave a review running in the background), then commit on the current branch, push it, and open a PR with `gh pr create` against the base branch. Honor modifiers in the instruction (e.g. "draft pr" → `--draft`).
+- **Mentions PR / push / ship** (e.g. "and open a pr", "ship it", "push and open pr", "open a draft pr"): commit on the current branch, push it, and open a PR with `gh pr create` against the base branch. Honor modifiers in the instruction (e.g. "draft pr" → `--draft`).
 - **Other instructions**: follow them. They may modify the above (e.g. "split into two commits", "rebase before pushing").
 
 **Never commit or push to `master`/`main` directly.** If you are on `master`/`main` and the user asked for a PR, create a new branch off the base first and push that — even if the change is small or "obviously correct".

@@ -69,12 +69,11 @@ Before declaring done, critically review your diff:
 
 Then get an external review of the changes:
 
-1. Run `/staff-review-loop` (`/b4nan:staff-review-loop` when installed from the plugin) and let it finish. It repeats `/staff-review apply` until a pass applies nothing, so do not substitute a single `/staff-review apply` pass: one pass routinely fixes a finding and leaves the next one behind it. Do not re-implement its fixes yourself. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
-2. After it returns, re-run the full checks from step 6 on the final tree.
+1. Run `/staff-review apply` (`/b4nan:staff-review apply` when installed from the plugin). The `apply` token tells the skill to auto-apply surgical fixes for every verified finding that is a real improvement, regardless of severity, skipping only those whose fix is unnecessary or disproportionately complex. Do not run `/staff-review` without `apply` here and then re-implement the fixing yourself — that duplicates the skill's own apply branch. After it returns, re-run the relevant tests on whatever it touched. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
 
-The review happens here, in the foreground, before anything is committed or pushed. Never open the PR first and review afterwards, and never leave a review running in the background when you report: the PR you hand over is the finished one, and the user may merge it the moment they see it. If the loop stops on its cap while still applying medium-or-worse findings, run it again; if it still does not converge, stop and tell the user instead of opening the PR.
+The review happens here, in the foreground, before anything is committed or pushed. Never open the PR first and review afterwards, and never leave a review running in the background when you report: the PR you hand over is the finished one, and the user may merge it the moment they see it.
 
-Only proceed to commit once the loop exits clean (or the remaining findings are explicitly low-severity and listed in your report).
+Only proceed to commit once the review is clean (or remaining findings are explicitly low-severity).
 
 ## 8. Commit and open PR
 
