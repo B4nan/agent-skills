@@ -69,9 +69,12 @@ Before declaring done, critically review your diff:
 
 Then get an external review of the changes:
 
-1. Run `/staff-review apply` (`/b4nan:staff-review apply` when installed from the plugin). The `apply` token tells the skill to auto-apply surgical fixes for every verified finding that is a real improvement, regardless of severity, skipping only those whose fix is unnecessary or disproportionately complex. Do not run `/staff-review` without `apply` here and then re-implement the fixing yourself — that duplicates the skill's own apply branch. After it returns, re-run the relevant tests on whatever it touched. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
+1. Run `/staff-review-loop` (`/b4nan:staff-review-loop` when installed from the plugin) and let it finish. It repeats `/staff-review apply` until a pass applies nothing, so do not substitute a single `/staff-review apply` pass: one pass routinely fixes a finding and leaves the next one behind it. Do not re-implement its fixes yourself. Comment hygiene and simplification opportunities are part of the staff-review surface — no separate manual pass needed.
+2. After it returns, re-run the full checks from step 6 on the final tree.
 
-Only proceed to commit once the review is clean (or remaining findings are explicitly low-severity).
+The review happens here, in the foreground, before anything is committed or pushed. Never open the PR first and review afterwards, and never leave a review running in the background when you report: the PR you hand over is the finished one, and the user may merge it the moment they see it. If the loop stops on its cap while still applying medium-or-worse findings, run it again; if it still does not converge, stop and tell the user instead of opening the PR.
+
+Only proceed to commit once the loop exits clean (or the remaining findings are explicitly low-severity and listed in your report).
 
 ## 8. Commit and open PR
 
@@ -83,5 +86,7 @@ Workflow:
 2. Commit on that branch using the project's git conventions. Use `fix(<scope>):` prefix. If the input was a GitHub issue, add `Closes #<number>` in the commit body.
 3. Push the branch (`git push -u origin <branch>`) — never push to `master`/`main`.
 4. Open a PR with `gh pr create` against the base branch.
+
+If anything has to be pushed after the PR exists (a late finding, CI fix), check `gh pr view --json state` first. A merged or closed PR gets a new branch off the updated base and a new PR; never push to its old branch. Give the same instruction to any subagent that may push.
 
 If you find yourself on `master`/`main` with the fix already committed locally, STOP — do not push. Move the commit to a new branch (`git branch <new-branch>` then `git reset --hard origin/master`) and push the branch instead. Ask the user before doing anything destructive to local state.
